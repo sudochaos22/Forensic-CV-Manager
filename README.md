@@ -51,11 +51,6 @@ This design allows the executable to be replaced or upgraded without overwriting
 - Training hours: numeric values only
 - Credential expiration dates: `YYYY-MM-DD`
 
-## Important note about imported training
-
-The supplied CV reports 3,319.25 total training hours, but some lines mix course hours, expiration dates, degree credits, or missing hour values. This starter database includes the clearly structured training entries available from the CV, but the dashboard total should be reconciled against source certificates and the complete training spreadsheet before being treated as an official total.
-
-
 ## Windows executable build note
 
 Run `build_windows.bat`. The script invokes PyInstaller through `python -m PyInstaller`, avoiding PATH issues with user-level installations.
@@ -79,13 +74,6 @@ Existing single-user v1 databases are migrated automatically into the first prof
 - User-entered line breaks are preserved in summaries and narrative descriptions.
 - Date-bearing records are ordered newest to oldest in generated CV sections and record lists; manual sort order is used only to break ties.
 - Date formatting is compatible with Windows Python.
-
-## Version 1.4 updates
-
-- Date fields accept common formats such as `3/5/2026`, `03-05-2026`, `2026-03-05`, `March 5, 2026`, `March 2026`, and `2026`.
-- Accepted dates are normalized internally for reliable chronological sorting.
-- Employment end dates also accept `Present`, `Current`, `Ongoing`, or `Now`.
-- Generated CVs now default to a portable `Resume` folder beside the application executable. The folder is created automatically.
 
 ## Version 1.4 updates
 
