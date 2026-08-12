@@ -12,37 +12,13 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
 from database import Database
-from date_utils import date_sort_key, display_date
+from cv_data import build_cv_data, full_text, pretty_date
 
 NAVY = RGBColor(31, 78, 121)
 DARK = RGBColor(45, 45, 45)
 
 
-def full_text(value: Any) -> str:
-    """Return the complete stored value without clipping or abbreviation."""
-    return "" if value is None else str(value)
-
-
-def date_key(value: Any, present_is_latest: bool = False) -> tuple[int, int, int, str]:
-    """Create a stable descending sort key for accepted date formats."""
-    return date_sort_key(value, present_is_latest=present_is_latest)
-
-
-def sorted_by_date(rows: Iterable[dict[str, Any]], field: str, *, present_is_latest: bool = False) -> list[dict[str, Any]]:
-    """Sort newest-to-oldest, using sort_order and id only as tie breakers."""
-    return sorted(
-        rows,
-        key=lambda row: (
-            date_key(row.get(field), present_is_latest),
-            -int(row.get("sort_order") or 0),
-            -int(row.get("id") or 0),
-        ),
-        reverse=True,
-    )
-
-
 def add_complete_text(doc: Document, text: Any, *, bullet: bool = False) -> None:
-    """Write all stored characters, preserving user-entered line breaks."""
     value = full_text(text)
     lines = value.splitlines() or [value]
     for line in lines:
@@ -52,10 +28,6 @@ def add_complete_text(doc: Document, text: Any, *, bullet: bool = False) -> None
             p = doc.add_paragraph()
             p.paragraph_format.space_after = Pt(1)
             p.add_run(line)
-
-
-def pretty_date(value: str | None, month_only: bool = False) -> str:
-    return display_date(value, month_only=month_only)
 
 
 def set_cell_shading(cell, fill: str) -> None:
@@ -107,7 +79,9 @@ def generate_cv(db: Database, output_path: str | Path, options: dict[str, Any] |
     styles['Normal'].font.size = Pt(9.5)
     styles['Normal'].font.color.rgb = DARK
 
-    profile = db.get_profile()
+    data = build_cv_data(db, options)
+    profile = data["profile"]
+    sections = data["sections"]
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_after = Pt(1)
@@ -133,7 +107,7 @@ def generate_cv(db: Database, output_path: str | Path, options: dict[str, Any] |
         add_complete_text(doc, profile['summary'])
 
     if options.get('core_training', True):
-        core = sorted_by_date([x for x in db.list_rows('training') if x.get('core_training')], 'attended_date')
+        core = sections.get('core_training', [])
         if core:
             add_section_heading(doc, "Core Training")
             for x in core:
@@ -142,7 +116,7 @@ def generate_cv(db: Database, output_path: str | Path, options: dict[str, Any] |
                 add_bullet(doc, f"{full_text(x.get('course_name'))}{provider}, {attended}".strip(', '))
 
     if options.get('employment', True):
-        rows = sorted(db.list_rows('employment'), key=lambda x: (date_key(x.get('end_date'), True), date_key(x.get('start_date'))), reverse=True)
+        rows = sections.get('employment', [])
         if rows:
             add_section_heading(doc, "Work Experience")
             for x in rows:
@@ -155,7 +129,7 @@ def generate_cv(db: Database, output_path: str | Path, options: dict[str, Any] |
                 add_complete_text(doc, x.get('description'), bullet=True)
 
     if options.get('teaching', True):
-        rows = sorted_by_date(db.list_rows('teaching'), 'start_date')
+        rows = sections.get('teaching', [])
         if rows:
             add_section_heading(doc, "Teaching Experience")
             for x in rows:
@@ -168,7 +142,7 @@ def generate_cv(db: Database, output_path: str | Path, options: dict[str, Any] |
                     add_complete_text(doc, x['description'], bullet=True)
 
     if options.get('organizations', True):
-        rows = sorted_by_date(db.list_rows('organizations'), 'start_year')
+        rows = sections.get('organizations', [])
         if rows:
             add_section_heading(doc, "Professional Organizations")
             for x in rows:
@@ -177,7 +151,7 @@ def generate_cv(db: Database, output_path: str | Path, options: dict[str, Any] |
                 add_bullet(doc, f"{years} {x.get('organization')}{role}")
 
     if options.get('certifications', True):
-        rows = sorted_by_date(db.list_rows('certifications'), 'earned_date')
+        rows = sections.get('certifications', [])
         if rows:
             add_section_heading(doc, "Digital Forensic Certifications")
             for x in rows:
@@ -186,7 +160,7 @@ def generate_cv(db: Database, output_path: str | Path, options: dict[str, Any] |
                 add_bullet(doc, f"{full_text(x.get('certification'))}, {full_text(x.get('issuing_organization'))} {earned}{expires}".strip())
 
     if options.get('skills', True):
-        rows = db.list_rows('skills')
+        rows = [item for values in sections.get('skills', {}).values() for item in values]
         if rows:
             add_section_heading(doc, "Relevant Skills and Tools")
             by_cat: dict[str, list[str]] = {}
@@ -200,7 +174,7 @@ def generate_cv(db: Database, output_path: str | Path, options: dict[str, Any] |
                 p.add_run('; '.join(values))
 
     if options.get('education', True):
-        rows = sorted_by_date(db.list_rows('education'), 'graduation_date')
+        rows = sections.get('education', [])
         if rows:
             add_section_heading(doc, "Education")
             for x in rows:
@@ -208,7 +182,8 @@ def generate_cv(db: Database, output_path: str | Path, options: dict[str, Any] |
                 add_bullet(doc, f"{x.get('degree')} - {x.get('institution')}, {x.get('graduation_date')}{honors}")
 
     if options.get('testimony', True):
-        rows = sorted_by_date(db.list_rows('testimony'), 'testimony_date')
+        testimony_groups = sections.get('testimony', {})
+        rows = testimony_groups.get('Expert Witness', []) + testimony_groups.get('Fact Witness', [])
         if rows:
             add_section_heading(doc, "Courtroom Testimony")
             for kind in ('Expert Witness', 'Fact Witness'):
@@ -223,11 +198,12 @@ def generate_cv(db: Database, output_path: str | Path, options: dict[str, Any] |
                     add_bullet(doc, f"SA# {x.get('case_number')}, {x.get('court')} {x.get('jurisdiction')}, {pretty_date(x.get('testimony_date'))}")
 
     if options.get('full_training', False):
-        rows = sorted_by_date(db.list_rows('training'), 'attended_date')
+        training_section = sections.get('full_training')
+        rows = training_section.get('rows', []) if training_section else []
         if rows:
             doc.add_section(WD_SECTION.NEW_PAGE)
             add_section_heading(doc, "Training Courses")
-            total = sum(float(x.get('hours') or 0) for x in rows)
+            total = training_section.get('total_hours', 0)
             p = doc.add_paragraph(f"Documented training hours in database: {total:,.2f}")
             p.runs[0].bold = True
             table = doc.add_table(rows=1, cols=4)
