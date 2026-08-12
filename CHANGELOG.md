@@ -4,6 +4,12 @@ All notable changes to Forensic CV Manager are documented here. The project foll
 
 > Historical note: versions through 2.4.0 were developed before this GitHub release history was backfilled. The release PRs were reconstructed afterward from preserved release packages and the development record. They intentionally document the progression without pretending the PR creation dates were the original release dates.
 
+## [2.4.1]
+### Fixed
+- Restored compatibility between `app.py` and the splash-screen API after the 2.4.0 source synchronization.
+- Added support for the `theme_name`, `set_status()`, and `close()` calls used by the current application startup sequence.
+- Replaced the deprecated `fitz` import with `pymupdf` while preserving the existing PDF preview implementation.
+
 ## [2.4.0]
 ### Added
 - Click-to-sort column headers on record tabs with ascending/descending toggling.
