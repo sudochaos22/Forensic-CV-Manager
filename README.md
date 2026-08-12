@@ -1,4 +1,4 @@
-# Forensic CV Manager 2.3.3
+# Forensic CV Manager 2.4.0
 
 Forensic CV Manager is a portable SQLite-backed desktop application for tracking professional qualifications and generating court-ready curricula vitae.
 
