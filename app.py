@@ -221,651 +221,715 @@ class RecordDialog(tk.Toplevel):
         ttk.Button(buttons, text="Cancel", command=self.destroy).pack(side="right", padx=4)
         ttk.Button(buttons, text="Save", command=self.save).pack(side="right", padx=4)
         self.bind("<Escape>", lambda e: self.destroy())
+        self.geometry("760x620")
 
     def save(self):
-        data = {}
+        result = {}
         for field in self.widgets:
             widget = self.widgets[field]
             if isinstance(widget, tk.Text):
                 value = widget.get("1.0", "end").strip()
-            elif field in self.vars:
-                value = self.vars[field].get()
             else:
-                value = ""
-            if field in DATE_FIELDS or field in YEAR_FIELDS:
-                allow_present = field in {"end_date", "end_year"}
+                value = self.vars[field].get()
+            if field == "hours":
                 try:
-                    value = normalize_date(str(value), allow_present=allow_present)
-                except ValueError as exc:
-                    messagebox.showerror("Invalid Date", f"{exc}", parent=self)
-                    widget.focus_set()
+                    value = float(value) if str(value).strip() else None
+                except ValueError:
+                    messagebox.showerror("Invalid Hours", "Hours must be a number.", parent=self)
                     return
-            data[field] = value
-        if "hours" in data and data["hours"] not in ("", None):
-            try:
-                data["hours"] = float(data["hours"])
-            except ValueError:
-                messagebox.showerror("Invalid Hours", "Hours must be a number.", parent=self)
-                return
-        self.result = data
+            elif field in DATE_FIELDS:
+                try:
+                    value = normalize_date(value, allow_present=field == "end_date")
+                except ValueError as exc:
+                    messagebox.showerror("Invalid Date", str(exc), parent=self)
+                    self.widgets[field].focus_set()
+                    return
+            elif field in YEAR_FIELDS:
+                try:
+                    value = normalize_date(value, allow_present=field == "end_year", allow_year_only=True)
+                    if value not in ("", "Present") and len(value) != 4:
+                        raise ValueError(f'"{value}" must be a four-digit year or Present.')
+                except ValueError as exc:
+                    messagebox.showerror("Invalid Year", str(exc), parent=self)
+                    self.widgets[field].focus_set()
+                    return
+            result[field] = value
+        self.result = result
         self.destroy()
 
 
-class RecordTab(ttk.Frame):
-    def __init__(self, parent, app, table: str, config: dict[str, Any]):
+class RecordsTab(ttk.Frame):
+    def __init__(self, parent, db: Database, table: str, status_callback):
         super().__init__(parent)
-        self.app = app
-        self.db = app.db
+        self.db = db
         self.table = table
-        self.config = config
+        self.config_data = TABLE_CONFIG[table]
+        self.status_callback = status_callback
         self.search_var = tk.StringVar()
         self.sort_column: str | None = None
         self.sort_descending = False
-        self.base_headings: dict[str, str] = {}
-        self._build()
-        self.refresh()
-
-    def _build(self):
         top = ttk.Frame(self)
         top.pack(fill="x", padx=8, pady=8)
-        ttk.Button(top, text="Add", command=self.add).pack(side="left")
-        ttk.Button(top, text="Edit", command=self.edit).pack(side="left", padx=5)
-        ttk.Button(top, text="Delete", command=self.delete).pack(side="left")
-        ttk.Label(top, text="Search:").pack(side="left", padx=(20, 5))
-        search = ttk.Entry(top, textvariable=self.search_var, width=30)
-        search.pack(side="left")
-        search.bind("<KeyRelease>", lambda e: self.refresh())
-        columns = self.config["display"]
-        self.tree = ttk.Treeview(self, columns=columns, show="headings", selectmode="browse")
-        for col in columns:
-            heading = col.replace("_", " ").title()
-            self.base_headings[col] = heading
-            self.tree.heading(col, text=heading, command=lambda c=col: self.sort_by_column(c))
-            self.tree.column(col, width=150, anchor="w")
-        self.tree.pack(fill="both", expand=True, padx=8, pady=(0, 8))
-        self.tree.bind("<Double-1>", lambda e: self.edit())
+        ttk.Label(top, text="Search:").pack(side="left")
+        entry = ttk.Entry(top, textvariable=self.search_var, width=35)
+        entry.pack(side="left", padx=5)
+        self.search_var.trace_add("write", lambda *_: self.refresh())
+        ttk.Button(top, text="Add", command=self.add).pack(side="right", padx=3)
+        ttk.Button(top, text="Edit", command=self.edit).pack(side="right", padx=3)
+        ttk.Button(top, text="Delete", command=self.delete).pack(side="right", padx=3)
 
-    def _sort_value(self, record: dict[str, Any], column: str):
-        value = record.get(column)
-        if value is None or str(value).strip() == "":
-            return None
-        if column in DATE_FIELDS or column in YEAR_FIELDS or column.endswith("_date") or column.endswith("_year"):
-            return date_sort_key(str(value))
+        cols = self.config_data["display"]
+        self.tree = ttk.Treeview(self, columns=cols, show="headings", selectmode="browse")
+        for col in cols:
+            self.tree.heading(
+                col,
+                text=self._heading_text(col),
+                command=lambda column=col: self.sort_by(column),
+            )
+            width = 110
+            if col in {"course_name", "certification", "employer", "degree", "skill", "achievement"}:
+                width = 260
+            self.tree.column(col, width=width, minwidth=70, stretch=True)
+        y = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
+        x = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=y.set, xscrollcommand=x.set)
+        self.tree.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=(0, 8))
+        y.pack(side="right", fill="y", padx=(0, 8), pady=(0, 8))
+        x.pack(side="bottom", fill="x", padx=8)
+        self.tree.bind("<Double-1>", lambda e: self.edit())
+        self.refresh()
+
+    def _heading_text(self, column: str) -> str:
+        label = column.replace("_", " ").title()
+        if self.sort_column == column:
+            return f"{label} {'▼' if self.sort_descending else '▲'}"
+        return label
+
+    def _update_headings(self) -> None:
+        for column in self.config_data["display"]:
+            self.tree.heading(column, text=self._heading_text(column))
+
+    @staticmethod
+    def _natural_text_key(value: object):
+        text = "" if value is None else str(value).strip().casefold()
+        parts = []
+        current = ""
+        numeric = None
+        for char in text:
+            is_digit = char.isdigit()
+            if numeric is None or is_digit == numeric:
+                current += char
+                numeric = is_digit
+            else:
+                parts.append(int(current) if numeric else current)
+                current = char
+                numeric = is_digit
+        if current:
+            parts.append(int(current) if numeric else current)
+        return tuple((0, part) if isinstance(part, int) else (1, part) for part in parts)
+
+    def _sort_key(self, row: dict[str, Any], column: str):
+        value = row.get(column)
+        if column in DATE_FIELDS or column in YEAR_FIELDS:
+            return date_sort_key(value, present_is_latest=column in {"end_date", "end_year"})
         if column == "hours":
             try:
                 return float(value)
             except (TypeError, ValueError):
-                return 0.0
+                return float("-inf")
         if column == "core_training":
-            return int(bool(value))
-        text = str(value).strip().casefold()
-        import re
-        return tuple(int(part) if part.isdigit() else part for part in re.split(r"(\d+)", text))
+            return 1 if value else 0
+        return self._natural_text_key(value)
 
-    def _sorted_records(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        if not self.sort_column:
-            return records
-        column = self.sort_column
-        nonblank = []
-        blank = []
-        for record in records:
-            key = self._sort_value(record, column)
-            if key is None:
-                blank.append(record)
-            else:
-                nonblank.append((key, record))
-        nonblank.sort(key=lambda item: item[0], reverse=self.sort_descending)
-        return [record for _, record in nonblank] + blank
-
-    def _update_sort_headings(self):
-        for column, base in self.base_headings.items():
-            if column == self.sort_column:
-                indicator = " ▼" if self.sort_descending else " ▲"
-            else:
-                indicator = ""
-            self.tree.heading(column, text=base + indicator, command=lambda c=column: self.sort_by_column(c))
-
-    def sort_by_column(self, column: str):
-        if self.sort_column == column:
+    def sort_by(self, column: str) -> None:
+        if column == self.sort_column:
             self.sort_descending = not self.sort_descending
         else:
             self.sort_column = column
             self.sort_descending = False
-        self._update_sort_headings()
+        self._update_headings()
         self.refresh()
 
     def refresh(self):
+        term = self.search_var.get().lower().strip()
+        selected = set(self.tree.selection())
         self.tree.delete(*self.tree.get_children())
-        rows = self._sorted_records(self.db.list(self.table, self.search_var.get()))
+        rows = []
+        for row in self.db.list_rows(self.table):
+            hay = " ".join(str(v or "") for v in row.values()).lower()
+            if term and term not in hay:
+                continue
+            rows.append(row)
+
+        if self.sort_column:
+            # Keep blank values at the bottom in either direction while sorting
+            # populated values using the appropriate data type.
+            populated = [r for r in rows if str(r.get(self.sort_column) or "").strip()]
+            blanks = [r for r in rows if not str(r.get(self.sort_column) or "").strip()]
+            populated.sort(
+                key=lambda r: self._sort_key(r, self.sort_column),
+                reverse=self.sort_descending,
+            )
+            rows = populated + blanks
+
         for row in rows:
-            vals = []
-            for col in self.config["display"]:
-                val = row.get(col, "")
+            values = []
+            for col in self.config_data["display"]:
+                value = row.get(col, "")
                 if col == "core_training":
-                    val = "Yes" if val else "No"
-                vals.append(val)
-            self.tree.insert("", "end", iid=str(row["id"]), values=vals)
-        if self.app.notebook.select() and self.app.notebook.tab(self.app.notebook.select(), "text") == self.config["label"]:
-            sort_note = ""
-            if self.sort_column:
-                direction = "descending" if self.sort_descending else "ascending"
-                sort_note = f" | Sorted by {self.base_headings[self.sort_column]} ({direction})"
-            self.app.set_status(f"{self.config['label']}: {len(rows)} records{sort_note}")
+                    value = "Yes" if value else "No"
+                values.append("" if value is None else value)
+            iid = str(row["id"])
+            self.tree.insert("", "end", iid=iid, values=values)
+            if iid in selected:
+                self.tree.selection_add(iid)
+        self.status_callback(f"{self.config_data['label']}: {len(self.tree.get_children())} record(s)")
 
     def selected_id(self):
         sel = self.tree.selection()
         return int(sel[0]) if sel else None
 
     def add(self):
-        dlg = RecordDialog(self, self.table, self.config)
+        dlg = RecordDialog(self, self.table, self.config_data)
         self.wait_window(dlg)
         if dlg.result is not None:
-            self.db.insert(self.table, dlg.result)
+            self.db.insert_row(self.table, dlg.result)
             self.refresh()
-            self.app.refresh_dashboard()
-            self.app.set_status(f"Added {self.config['label']} record")
 
     def edit(self):
-        rid = self.selected_id()
-        if not rid:
-            messagebox.showinfo("Edit", "Select a record first.", parent=self)
+        row_id = self.selected_id()
+        if not row_id:
+            messagebox.showinfo("Select Record", "Select a record to edit.", parent=self)
             return
-        record = self.db.get(self.table, rid)
-        dlg = RecordDialog(self, self.table, self.config, record)
+        dlg = RecordDialog(self, self.table, self.config_data, self.db.get_row(self.table, row_id))
         self.wait_window(dlg)
         if dlg.result is not None:
-            self.db.update(self.table, rid, dlg.result)
+            self.db.update_row(self.table, row_id, dlg.result)
             self.refresh()
-            self.app.refresh_dashboard()
-            self.app.set_status(f"Updated {self.config['label']} record")
 
     def delete(self):
-        rid = self.selected_id()
-        if not rid:
-            messagebox.showinfo("Delete", "Select a record first.", parent=self)
+        row_id = self.selected_id()
+        if not row_id:
+            messagebox.showinfo("Select Record", "Select a record to delete.", parent=self)
             return
-        if not messagebox.askyesno("Delete Record", "Permanently delete the selected record?", parent=self):
-            return
-        self.db.delete(self.table, rid)
-        self.refresh()
-        self.app.refresh_dashboard()
-        self.app.set_status(f"Deleted {self.config['label']} record")
-
-
-class HelpWindow(tk.Toplevel):
-    def __init__(self, parent, section: str | None = None):
-        super().__init__(parent)
-        self.title(f"{APP_NAME} {APP_VERSION} - User Manual")
-        self.geometry("820x650")
-        frame = ttk.Frame(self, padding=10)
-        frame.pack(fill="both", expand=True)
-        text = tk.Text(frame, wrap="word", padx=12, pady=12)
-        text.pack(side="left", fill="both", expand=True)
-        scroll = ttk.Scrollbar(frame, command=text.yview)
-        scroll.pack(side="right", fill="y")
-        text.configure(yscrollcommand=scroll.set)
-        try:
-            if getattr(parent, "theme_name", "light") == "dark":
-                text.configure(bg="#313338", fg="#f2f3f5", insertbackground="#f2f3f5")
-        except Exception:
-            pass
-        manual = self.manual_text()
-        text.insert("1.0", manual)
-        text.configure(state="disabled")
-        if section:
-            pos = text.search(section, "1.0", stopindex="end")
-            if pos:
-                text.see(pos)
-
-    @staticmethod
-    def manual_text() -> str:
-        return f"""{APP_NAME} {APP_VERSION}
-USER MANUAL
-
-OVERVIEW
-{APP_NAME} stores professional CV information in a portable SQLite database and generates Word and PDF curriculum vitae documents on demand. Multiple examiner profiles may be maintained in one database.
-
-1. PROFILES
-Use the profile selector near the top of the application to switch users. File > New Profile creates an empty profile. File > Rename Profile changes the selected profile's display name. File > Delete Profile permanently deletes that profile and all records belonging to it.
-
-2. HOW TO ADD RECORDS
-Select the appropriate tab, such as Employment, Education, Training, Certifications, Courtroom Testimony, Teaching, Organizations, Skills & Tools, or Achievements.
-
-Click Add. Complete the fields in the Add Record window and choose Save. The new record immediately becomes part of the selected profile's database.
-
-Dates accept common formats such as 3/5/2026, 03-05-2026, 2026-03-05, March 5 2026, March 2026, 03/2026, and 2026. End-date fields may also use Present, Current, Ongoing, or Now. Dates are normalized internally to keep chronological sorting reliable.
-
-Training Hours should contain a number, such as 8, 16, or 40. Select Include in Core Training when the course should appear in the shorter Core Training section of a generated CV.
-
-Long Notes, Duties, and Description fields are stored and generated in full; they are not limited to the amount visible in the entry window.
-
-3. EDITING RECORDS
-Select a record and click Edit, or double-click the record. Make the required changes and click Save.
-
-4. DELETING RECORDS
-Select a record and click Delete. Confirm the warning. Deletion is permanent, so create regular database backups.
-
-5. SEARCHING
-Use the Search box on a record tab to filter that tab's records. Clearing the Search box restores the complete list.
-
-6. DASHBOARD
-The Dashboard summarizes employment, education, training, certifications, testimony, and other professional records. Certification alerts identify expired credentials and credentials expiring within 90 days.
-
-7. GENERATING A CV
-Open Generate CV. Select the sections to include. Generate Word CV creates an editable DOCX file. Preview & Save PDF creates a native PDF preview inside the application and allows saving after review. Generate Word + PDF produces both independently from the same current SQLite records. PDF output always uses the Professional report style. Microsoft Word is not required to generate PDF documents.
-
-Generated reports default to the Resume folder beside the application, which keeps the workflow portable when the program is run from a flash drive.
-
-8. IMPORT / EXPORT
-File > Export Profile saves the selected examiner profile and its records as a JSON package. File > Import Profile loads a previously exported package as another profile.
-
-9. BACKUPS
-File > Backup Database creates a complete SQLite backup. File > Restore Database replaces the current database from a backup. The database contains every profile, so a database backup is the recommended full backup method.
-
-10. PORTABLE USE
-Keep the executable and its data folder together. The writable database is stored in data/forensic_cv.sqlite3. The Resume folder is also created beside the application. Moving the complete application folder to a flash drive keeps the database and generated CV files together.
-
-11. SAMPLE DATA
-File > Load Sample Data can replace the selected profile's records with fictitious demonstration information. Use this only when you intentionally want demonstration data in that profile.
-
-12. APPEARANCE
-Tools > Appearance switches between Light and Dark mode. The selection is saved in data/ui_settings.json and follows the portable application.
-
-13. PDF PREVIEW
-Generate CV > Preview & Save PDF opens the native integrated viewer. Use Previous/Next to change pages, Zoom +/- for magnification, Fit Width to resize the current page, and Save PDF to place the reviewed document in the Resume folder or another chosen location.
-
-14. UPDATES
-Tools > Check for Updates compares this version ({APP_VERSION}) with the latest published GitHub Release when an update repository has been configured. The update check does not modify the application automatically.
-"""
+        if messagebox.askyesno("Delete Record", "Delete the selected record?", parent=self):
+            self.db.delete_row(self.table, row_id)
+            self.refresh()
 
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.theme_name = load_theme_preference()
-        splash = SplashScreen(self, theme_name=self.theme_name)
-        splash.set_status("Preparing portable database...", 25)
         self.withdraw()
         self.title(f"{APP_NAME} {APP_VERSION}")
-        self.geometry("1200x780")
-        self.minsize(980, 650)
+        self.geometry("1250x760")
+        self.minsize(950, 600)
+        self.theme_name = load_theme_preference()
         try:
-            icon_path = resource_path("assets/app.ico")
-            if icon_path.exists():
-                self.iconbitmap(str(icon_path))
+            self.iconbitmap(str(resource_path("assets/app.ico")))
         except Exception:
             pass
+        self.splash = SplashScreen(self, APP_VERSION)
+        self.splash.step("Preparing portable workspace…", 20)
         self.db_path = prepare_portable_database()
-        splash.set_status("Opening SQLite database...", 48)
+        self.splash.step("Opening credential database…", 42)
         self.db = Database(self.db_path)
-        if not self.db.list_profiles():
-            seed(self.db)
-        self.style = ttk.Style(self)
-        splash.set_status("Loading interface...", 66)
-        self._configure_styles()
-        self.status = tk.StringVar(value="Ready")
-        self.profile_display_to_id: dict[str, int] = {}
-        self.record_tabs: dict[str, RecordTab] = {}
-        self._menu()
-        self._topbar()
-        self._build_tabs()
-        self._statusbar()
-        self.refresh_profiles(select_current=True)
-        self._apply_theme()
-        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
-        self.after_idle(self._on_tab_changed)
+        seed(self.db)
+        self.splash.step("Loading profiles and records…", 60)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
-        splash.set_status("Ready", 100)
+        self._style()
+        self._menu()
+        self.splash.step("Building application workspace…", 76)
+        self.status = tk.StringVar(value="Ready")
+        self.profile_bar = ttk.Frame(self, padding=(8, 6))
+        self.profile_bar.pack(fill="x")
+        ttk.Label(self.profile_bar, text="Active Profile:").pack(side="left")
+        self.profile_choice = tk.StringVar()
+        self.profile_combo = ttk.Combobox(self.profile_bar, textvariable=self.profile_choice, state="readonly", width=34)
+        self.profile_combo.pack(side="left", padx=6)
+        self.profile_combo.bind("<<ComboboxSelected>>", self.switch_profile)
+        ttk.Button(self.profile_bar, text="Manage Profiles", command=self.manage_profiles).pack(side="left", padx=3)
+        self.notebook = ttk.Notebook(self)
+        self.notebook.pack(fill="both", expand=True)
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+        self._dashboard_tab()
+        self._profile_tab()
+        self.record_tabs = {}
+        for table in TABLE_CONFIG:
+            tab = RecordsTab(self.notebook, self.db, table, self.set_status)
+            self.record_tabs[table] = tab
+            self.notebook.add(tab, text=TABLE_CONFIG[table]["label"])
+        self._generate_tab()
+        ttk.Label(self, textvariable=self.status, relief="sunken", anchor="w").pack(fill="x", side="bottom")
+        self.refresh_profile_selector()
+        self._on_tab_changed()
+        self._apply_native_widget_theme()
+        self.splash.step("Ready", 100)
         self.update_idletasks()
-        splash.close()
+        self.splash.destroy()
         self.deiconify()
-        self.after(50, self.lift)
-        self.after(750, self._startup_update_check)
+        self.after(1800, self.auto_check_for_updates)
 
-    def _configure_styles(self):
-        self.style.configure("Title.TLabel", font=("Segoe UI", 16, "bold"))
-        self.style.configure("Stat.TLabel", font=("Segoe UI", 18, "bold"))
+    def _style(self):
+        style = ttk.Style(self)
+        self.style = style
+        if self.theme_name == "dark":
+            self._apply_dark_ttk_style()
+        else:
+            self._apply_light_ttk_style()
 
-    def _apply_theme(self):
-        dark = self.theme_name == "dark"
-        bg = "#202225" if dark else "SystemButtonFace"
-        panel = "#2b2d31" if dark else "#ffffff"
-        field = "#313338" if dark else "#ffffff"
-        fg = "#f2f3f5" if dark else "#212529"
-        muted = "#b5bac1" if dark else "#495057"
-        select = "#3f526f" if dark else "#d9e8f6"
+    def _apply_light_ttk_style(self):
+        style = self.style
+        try:
+            style.theme_use("vista" if sys.platform.startswith("win") else "clam")
+        except tk.TclError:
+            pass
+        style.configure("Treeview", rowheight=26)
+        style.configure("Title.TLabel", font=("Segoe UI", 18, "bold"))
+        style.configure("Metric.TLabel", font=("Segoe UI", 20, "bold"), foreground="#1f4e79")
+
+    def _apply_dark_ttk_style(self):
+        style = self.style
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        bg = "#202225"
+        panel = "#2b2d31"
+        field = "#313338"
+        fg = "#f2f3f5"
+        muted = "#b5bac1"
+        accent = "#6ea8d7"
         self.configure(bg=bg)
-        self.option_add("*TCombobox*Listbox.background", field)
-        self.option_add("*TCombobox*Listbox.foreground", fg)
-        self.style.configure(".", font=("Segoe UI", 10))
-        self.style.configure("TFrame", background=bg)
-        self.style.configure("TLabel", background=bg, foreground=fg)
-        self.style.configure("Title.TLabel", background=bg, foreground=fg, font=("Segoe UI", 16, "bold"))
-        self.style.configure("Stat.TLabel", background=bg, foreground=fg, font=("Segoe UI", 18, "bold"))
-        self.style.configure("TButton", padding=(8, 4))
-        self.style.configure("TCheckbutton", background=bg, foreground=fg)
-        self.style.configure("TLabelframe", background=bg)
-        self.style.configure("TLabelframe.Label", background=bg, foreground=fg)
-        self.style.configure("TNotebook", background=bg)
-        self.style.configure("TNotebook.Tab", padding=(10, 5))
-        self.style.configure("TEntry", fieldbackground=field, foreground=fg)
-        self.style.configure("TCombobox", fieldbackground=field, foreground=fg)
-        self.style.configure("Treeview", background=field, fieldbackground=field, foreground=fg, rowheight=24)
-        self.style.map("Treeview", background=[("selected", select)], foreground=[("selected", fg)])
-        self.style.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"))
-        for widget in self.winfo_children():
-            self._theme_tk_children(widget, dark, field, fg)
-        if hasattr(self, "dashboard_chart"):
-            self.dashboard_chart.configure(bg=field, highlightthickness=1, highlightbackground=("#4a4d52" if dark else "#cccccc"))
-            self.refresh_dashboard()
+        style.configure(".", background=bg, foreground=fg, fieldbackground=field)
+        style.configure("TFrame", background=bg)
+        style.configure("TLabel", background=bg, foreground=fg)
+        style.configure("TLabelframe", background=bg, foreground=fg)
+        style.configure("TLabelframe.Label", background=bg, foreground=fg)
+        style.configure("TButton", background=panel, foreground=fg, padding=(8, 4))
+        style.map("TButton", background=[("active", "#3a3d42")])
+        style.configure("TEntry", fieldbackground=field, foreground=fg)
+        style.configure("TCombobox", fieldbackground=field, foreground=fg, background=field)
+        style.map("TCombobox", fieldbackground=[("readonly", field)], foreground=[("readonly", fg)])
+        style.configure("TNotebook", background=bg, borderwidth=0)
+        style.configure("TNotebook.Tab", background=panel, foreground=muted, padding=(10, 5))
+        style.map("TNotebook.Tab", background=[("selected", field)], foreground=[("selected", fg)])
+        style.configure("Treeview", rowheight=26, background=field, fieldbackground=field, foreground=fg)
+        style.configure("Treeview.Heading", background=panel, foreground=fg)
+        style.map("Treeview", background=[("selected", "#3d6382")], foreground=[("selected", "#ffffff")])
+        style.configure("Title.TLabel", font=("Segoe UI", 18, "bold"), background=bg, foreground=fg)
+        style.configure("Metric.TLabel", font=("Segoe UI", 20, "bold"), background=bg, foreground=accent)
 
-    def _theme_tk_children(self, widget, dark, field, fg):
-        if isinstance(widget, tk.Text):
-            try:
-                widget.configure(bg=field, fg=fg, insertbackground=fg, selectbackground="#3f526f" if dark else "#cce1f5")
-            except tk.TclError:
-                pass
-        if isinstance(widget, tk.Canvas):
-            try:
-                widget.configure(bg=field)
-            except tk.TclError:
-                pass
-        for child in widget.winfo_children():
-            self._theme_tk_children(child, dark, field, fg)
-
-    def set_theme(self, theme: str):
-        if theme not in {"light", "dark"} or theme == self.theme_name:
+    def set_theme(self, theme_name: str):
+        if theme_name not in {"light", "dark"}:
             return
-        self.theme_name = theme
-        save_theme_preference(theme)
-        self._apply_theme()
-        self.set_status(f"Appearance changed to {theme.title()} Mode")
+        self.theme_name = theme_name
+        if theme_name == "dark":
+            self._apply_dark_ttk_style()
+        else:
+            self.configure(bg="#f0f0f0")
+            self._apply_light_ttk_style()
+        save_theme_preference(theme_name)
+        self._apply_native_widget_theme()
+        self.set_status("Dark mode enabled" if theme_name == "dark" else "Light mode enabled")
+
+    def _apply_native_widget_theme(self):
+        dark = self.theme_name == "dark"
+        text_bg, text_fg = (("#313338", "#f2f3f5") if dark else ("#ffffff", "#000000"))
+        canvas_bg = "#2b2d31" if dark else "#ffffff"
+        self._theme_walk(self, text_bg, text_fg, canvas_bg)
+        if hasattr(self, "dashboard_chart"):
+            try:
+                self.dashboard_chart.configure(background=canvas_bg)
+                self.refresh_dashboard()
+            except Exception:
+                pass
+
+    def _theme_walk(self, widget, text_bg, text_fg, canvas_bg):
+        for child in widget.winfo_children():
+            if isinstance(child, tk.Text):
+                try:
+                    child.configure(bg=text_bg, fg=text_fg, insertbackground=text_fg)
+                except tk.TclError:
+                    pass
+            elif isinstance(child, tk.Canvas):
+                try:
+                    child.configure(background=canvas_bg)
+                except tk.TclError:
+                    pass
+            self._theme_walk(child, text_bg, text_fg, canvas_bg)
 
     def _menu(self):
         menu = tk.Menu(self)
-        filem = tk.Menu(menu, tearoff=0)
-        filem.add_command(label="New Profile...", command=self.new_profile)
-        filem.add_command(label="Rename Profile...", command=self.rename_profile)
-        filem.add_command(label="Delete Profile...", command=self.delete_profile)
-        filem.add_separator()
-        filem.add_command(label="Export Profile...", command=self.export_current_profile)
-        filem.add_command(label="Import Profile...", command=self.import_profile_package)
-        filem.add_separator()
-        filem.add_command(label="Backup Database...", command=self.backup_db)
-        filem.add_command(label="Restore Database...", command=self.restore_db)
-        filem.add_command(label="Open Data Folder", command=self.open_data_folder)
-        filem.add_command(label="Open Resume Folder", command=self.open_resume_folder)
-        filem.add_separator()
-        filem.add_command(label="Load Sample Data...", command=self.load_sample_data)
-        filem.add_command(label="Clear Current Profile Data...", command=self.clear_current_profile_data)
-        filem.add_separator()
-        filem.add_command(label="Exit", command=self.on_close)
-        menu.add_cascade(label="File", menu=filem)
-
-        toolsm = tk.Menu(menu, tearoff=0)
-        appearancem = tk.Menu(toolsm, tearoff=0)
-        appearancem.add_radiobutton(label="Light Mode", value="light", variable=tk.StringVar(value=self.theme_name), command=lambda: self.set_theme("light"))
-        appearancem.add_radiobutton(label="Dark Mode", value="dark", variable=tk.StringVar(value=self.theme_name), command=lambda: self.set_theme("dark"))
-        # Retain a persistent StringVar so radio indicators track the current setting.
-        self.appearance_menu_var = tk.StringVar(value=self.theme_name)
-        appearancem.delete(0, "end")
-        appearancem.add_radiobutton(label="Light Mode", value="light", variable=self.appearance_menu_var, command=lambda: self.set_theme("light"))
-        appearancem.add_radiobutton(label="Dark Mode", value="dark", variable=self.appearance_menu_var, command=lambda: self.set_theme("dark"))
-        toolsm.add_cascade(label="Appearance", menu=appearancem)
-        toolsm.add_separator()
-        toolsm.add_command(label="Check for Updates", command=lambda: self.check_for_updates(manual=True))
-        menu.add_cascade(label="Tools", menu=toolsm)
-
-        helpm = tk.Menu(menu, tearoff=0)
-        helpm.add_command(label="User Manual", command=lambda: HelpWindow(self))
-        helpm.add_command(label="How to Add Records", command=lambda: HelpWindow(self, "2. HOW TO ADD RECORDS"))
-        helpm.add_separator()
-        helpm.add_command(label="About", command=self.show_about)
-        menu.add_cascade(label="Help", menu=helpm)
+        file_menu = tk.Menu(menu, tearoff=False)
+        file_menu.add_command(label="New Blank Profile...", command=self.new_blank_profile)
+        file_menu.add_command(label="Load Sample Data...", command=self.load_sample_data)
+        file_menu.add_separator()
+        file_menu.add_command(label="Import Profile...", command=self.import_profile_file)
+        file_menu.add_command(label="Export Current Profile...", command=self.export_profile_file)
+        file_menu.add_separator()
+        file_menu.add_command(label="Backup Database...", command=self.backup_db)
+        file_menu.add_command(label="Restore Database...", command=self.restore_db)
+        file_menu.add_separator()
+        file_menu.add_command(label="Clear Current Profile Data...", command=self.clear_profile_data)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.on_close)
+        menu.add_cascade(label="File", menu=file_menu)
+        tools_menu = tk.Menu(menu, tearoff=False)
+        appearance_menu = tk.Menu(tools_menu, tearoff=False)
+        appearance_menu.add_command(label="Light Mode", command=lambda: self.set_theme("light"))
+        appearance_menu.add_command(label="Dark Mode", command=lambda: self.set_theme("dark"))
+        tools_menu.add_cascade(label="Appearance", menu=appearance_menu)
+        tools_menu.add_separator()
+        tools_menu.add_command(label="Check for Updates...", command=self.check_for_updates)
+        tools_menu.add_command(label="Open Resume Folder", command=self.open_resume_folder)
+        tools_menu.add_command(label="Open Data Folder", command=self.open_data_folder)
+        menu.add_cascade(label="Tools", menu=tools_menu)
+        help_menu = tk.Menu(menu, tearoff=False)
+        help_menu.add_command(label="User Manual", command=self.show_user_manual)
+        help_menu.add_command(label="How to Add Records", command=lambda: self.show_user_manual("Adding Records"))
+        help_menu.add_separator()
+        help_menu.add_command(label="About", command=self.show_about)
+        menu.add_cascade(label="Help", menu=help_menu)
         self.config(menu=menu)
 
     def show_about(self):
-        messagebox.showinfo("About", f"{APP_NAME}\nVersion {APP_VERSION}\n\nPortable professional portfolio and CV management for digital forensic examiners and expert witnesses.\n\nNative PDF generation uses ReportLab; PDF preview uses PyMuPDF.")
+        messagebox.showinfo(
+            "About",
+            f"{APP_NAME} {APP_VERSION}\n\n"
+            "Portable professional credential and CV tracking.\n"
+            "Versioning follows Semantic Versioning (MAJOR.MINOR.PATCH).",
+            parent=self,
+        )
 
-    def _startup_update_check(self):
-        try:
-            self.check_for_updates(manual=False)
-        except Exception:
-            pass
+    def show_user_manual(self, initial_section: str = "Getting Started"):
+        manual = tk.Toplevel(self)
+        manual.title(f"{APP_NAME} User Manual")
+        manual.geometry("900x680")
+        manual.minsize(700, 500)
+        manual.transient(self)
 
-    def check_for_updates(self, manual: bool = True):
-        if not GITHUB_REPOSITORY:
-            if manual:
-                messagebox.showinfo("Updates", "No GitHub update repository is configured.")
+        outer = ttk.Frame(manual, padding=10)
+        outer.pack(fill="both", expand=True)
+        ttk.Label(outer, text="User Manual", style="Title.TLabel").pack(anchor="w", pady=(0, 8))
+        ttk.Label(outer, text=f"Forensic CV Manager {APP_VERSION}").pack(anchor="w", pady=(0, 10))
+
+        book = ttk.Notebook(outer)
+        book.pack(fill="both", expand=True)
+
+        sections = {
+            "Getting Started": """GETTING STARTED
+
+1. Select an existing profile from the Active Profile list, or choose File > New Blank Profile.
+2. Open the Profile tab and enter the examiner's contact information and professional summary.
+3. Use the record tabs to add employment, education, training, certifications, testimony, teaching, organizations, skills, and achievements.
+4. Open Generate CV, select the sections, and create a Word or PDF document.
+
+The working database is stored in the data folder beside the application. Generated documents are stored in the Resume folder by default.""",
+            "Adding Records": """ADDING RECORDS
+
+1. Select the correct profile from Active Profile.
+2. Open the appropriate tab, such as Training, Certifications, or Courtroom Testimony.
+3. Select Add in the upper-right corner of that tab.
+4. Complete the fields in the Add Record window.
+5. Select Save. The new record appears in the table and is immediately available to the dashboard and CV generator.
+
+DATE ENTRY
+Common date formats are accepted, including 3/5/2026, 03-05-2026, 2026-03-05, March 5, 2026, March 2026, 03/2026, and 2026. Employment end dates may use Present, Current, Ongoing, or Now. Dates are normalized internally for reliable sorting.
+
+LONG TEXT
+Description and Notes fields accept multiline text. The complete text is retained and printed in generated CVs.
+
+TRAINING HOURS
+Enter only the documented course hours as a number. Leave the field blank when hours are unknown. Training totals are calculated automatically.
+
+CORE TRAINING
+On a training record, select Include in Core Training when the course should appear in the concise Core Training section of the CV.""",
+            "Editing and Deleting": """EDITING AND DELETING RECORDS
+
+To edit a record, select it in the table and choose Edit. Make the changes and select Save.
+
+To delete a record, select it and choose Delete. Confirm the deletion when prompted. Deleted records cannot be recovered unless a database backup is restored.
+
+File > Clear Current Profile Data removes all professional records for the selected profile but keeps the profile itself. Manage Profiles can permanently delete an entire profile and its linked records. Create a backup before performing bulk deletions.""",
+            "Profiles": """MANAGING PROFILES
+
+Use the Active Profile list to switch between examiners. All records, dashboard totals, and generated CV sections are filtered to the selected profile.
+
+Select Manage Profiles to add, rename, switch, or delete profiles. Duplicate profile names are displayed with a parenthetical number for clarity.
+
+File > Export Current Profile creates a portable profile package. File > Import Profile loads a profile package into the current database.""",
+            "Generating a CV": """GENERATING A CV
+
+1. Select the correct Active Profile.
+2. Open the Generate CV tab.
+3. Select the sections to include.
+4. Choose Generate Word CV, Preview & Save PDF, or Generate Word + PDF.
+5. Confirm the suggested filename and Resume folder location.
+
+Date-based sections are ordered newest to oldest. Long entries and multiline descriptions are included in full. PDF documents are generated directly by the application and do not require Microsoft Word or LibreOffice. Word output remains available for later editing.""",
+            "Backup and Portability": """BACKUP AND PORTABILITY
+
+The application is designed to run from a portable folder or flash drive. Keep the executable, data folder, Resume folder, and Backups folder together.
+
+Use File > Backup Database to copy the current SQLite database to another drive or secure location. Use File > Restore Database to replace the working database with a backup.
+
+Do not rely on a flash drive as the only copy of professional records. Maintain a separate encrypted or agency-approved backup.""",
+        }
+
+        selected_index = 0
+        for index, (title, content) in enumerate(sections.items()):
+            page = ttk.Frame(book, padding=8)
+            book.add(page, text=title)
+            text_frame = ttk.Frame(page)
+            text_frame.pack(fill="both", expand=True)
+            text = tk.Text(text_frame, wrap="word", padx=12, pady=12, font=("Segoe UI", 10), state="normal")
+            scroll = ttk.Scrollbar(text_frame, orient="vertical", command=text.yview)
+            text.configure(yscrollcommand=scroll.set)
+            text.pack(side="left", fill="both", expand=True)
+            scroll.pack(side="right", fill="y")
+            text.insert("1.0", content)
+            text.configure(state="disabled")
+            if title == initial_section:
+                selected_index = index
+        book.select(selected_index)
+        ttk.Button(outer, text="Close", command=manual.destroy).pack(anchor="e", pady=(10, 0))
+        if self.theme_name == "dark":
+            self._theme_walk(manual, "#313338", "#f2f3f5", "#2b2d31")
+
+    def refresh_profile_selector(self):
+        self._profiles = self.db.list_profiles()
+        labels = []
+        counts = {}
+        for profile in self._profiles:
+            base = (profile.get("profile_name") or profile.get("full_name") or "Unnamed Profile").strip()
+            counts[base] = counts.get(base, 0) + 1
+            label = base if counts[base] == 1 else f"{base} ({counts[base]})"
+            labels.append(label)
+        self._profile_labels = labels
+        self.profile_combo["values"] = labels
+        for index, profile in enumerate(self._profiles):
+            if profile["id"] == self.db.current_profile_id:
+                self.profile_choice.set(labels[index])
+                self.profile_combo.current(index)
+                break
+
+    def switch_profile(self, event=None):
+        index = self.profile_combo.current()
+        if index < 0 or index >= len(self._profiles):
             return
-        result = check_github_release(APP_VERSION, GITHUB_REPOSITORY)
-        if not result.get("ok"):
-            if manual:
-                messagebox.showerror("Update Check", result.get("message", "Unable to check for updates."))
+        pid = self._profiles[index]["id"]
+        if pid == self.db.current_profile_id:
             return
-        if result.get("update_available"):
-            answer = messagebox.askyesno("Update Available", f"Version {result['latest_version']} is available.\n\nOpen the GitHub release page?")
-            if answer:
-                webbrowser.open(result.get("html_url", f"https://github.com/{GITHUB_REPOSITORY}/releases/latest"))
-        elif manual:
-            messagebox.showinfo("Updates", f"You are running the latest published version ({APP_VERSION}).")
+        self.db.set_current_profile(pid)
+        self.reload_current_profile()
+        self._on_tab_changed()
 
-    def _topbar(self):
-        top = ttk.Frame(self, padding=(10, 8))
-        top.pack(fill="x")
-        ttk.Label(top, text="Profile:").pack(side="left")
-        self.profile_var = tk.StringVar()
-        self.profile_combo = ttk.Combobox(top, textvariable=self.profile_var, state="readonly", width=44)
-        self.profile_combo.pack(side="left", padx=8)
-        self.profile_combo.bind("<<ComboboxSelected>>", self.switch_profile)
-        ttk.Button(top, text="New Profile", command=self.new_profile).pack(side="left")
-        ttk.Button(top, text="Export", command=self.export_current_profile).pack(side="right", padx=4)
-        ttk.Button(top, text="Backup", command=self.backup_db).pack(side="right", padx=4)
-
-    def _statusbar(self):
-        ttk.Label(self, textvariable=self.status, anchor="w", relief="sunken").pack(side="bottom", fill="x")
-
-    def _build_tabs(self):
-        self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill="both", expand=True, padx=8, pady=6)
-        self._dashboard_tab()
-        self._profile_tab()
-        for table, config in TABLE_CONFIG.items():
-            tab = RecordTab(self.notebook, self, table, config)
-            self.record_tabs[table] = tab
-            self.notebook.add(tab, text=config["label"])
-        self._generate_tab()
-
-    def _profile_display_names(self, profiles: list[dict[str, Any]]) -> dict[str, int]:
-        """Build clean labels without exposing internal SQLite profile IDs."""
-        used: dict[str, int] = {}
-        result: dict[str, int] = {}
-        for p in profiles:
-            base = (p.get("profile_name") or p.get("preferred_name") or p.get("full_name") or "Unnamed Profile").strip()
-            count = used.get(base.casefold(), 0) + 1
-            used[base.casefold()] = count
-            label = base if count == 1 else f"{base} ({count})"
-            result[label] = int(p["id"])
-        return result
-
-    def refresh_profiles(self, select_current=False):
-        profiles = self.db.list_profiles()
-        self.profile_display_to_id = self._profile_display_names(profiles)
-        values = list(self.profile_display_to_id)
-        self.profile_combo["values"] = values
-        current_id = self.db.get_current_profile_id()
-        target_label = next((label for label, pid in self.profile_display_to_id.items() if pid == current_id), None)
-        if target_label:
-            self.profile_var.set(target_label)
-        elif values:
-            self.profile_var.set(values[0])
-            self.db.set_current_profile(self.profile_display_to_id[values[0]])
-        if hasattr(self, "record_tabs"):
-            self.refresh_all_tabs()
-        if hasattr(self, "profile_vars"):
-            self.load_profile_form()
-        if hasattr(self, "dashboard_stats"):
-            self.refresh_dashboard()
-
-    def switch_profile(self, _event=None):
-        label = self.profile_var.get()
-        pid = self.profile_display_to_id.get(label)
-        if pid:
-            self.db.set_current_profile(pid)
-            self.refresh_profiles()
-            self.set_status(f"Active profile: {label}")
-
-    def new_profile(self):
-        dlg = ProfileNameDialog(self, "New Profile")
-        self.wait_window(dlg)
-        if dlg.result:
-            pid = self.db.create_profile(dlg.result)
-            self.db.set_current_profile(pid)
-            self.refresh_profiles()
-            self.notebook.select(1)
-            self.set_status(f"Created profile: {dlg.result}")
-
-    def rename_profile(self):
-        current = self.db.get_profile()
-        dlg = ProfileNameDialog(self, "Rename Profile", current.get("profile_name", ""))
-        self.wait_window(dlg)
-        if dlg.result:
-            self.db.rename_profile(current["id"], dlg.result)
-            self.refresh_profiles()
-
-    def delete_profile(self):
-        profiles = self.db.list_profiles()
-        if len(profiles) <= 1:
-            messagebox.showwarning("Delete Profile", "At least one profile must remain.")
-            return
-        current = self.db.get_profile()
-        name = current.get("profile_name") or current.get("full_name") or "this profile"
-        if not messagebox.askyesno("Delete Profile", f"Permanently delete {name} and all of its records?\n\nThis cannot be undone."):
-            return
-        self.db.delete_profile(current["id"])
-        self.refresh_profiles()
-
-    def clear_current_profile_data(self):
+    def reload_current_profile(self):
         profile = self.db.get_profile()
-        name = profile.get("profile_name") or "current profile"
-        if not messagebox.askyesno("Clear Profile Data", f"Delete all professional records for {name}?\n\nThe profile itself will remain. This cannot be undone."):
-            return
-        self.db.clear_profile_records(profile["id"])
-        self.refresh_all_tabs()
+        for name, var in getattr(self, "profile_vars", {}).items():
+            var.set(profile.get(name, ""))
+        if hasattr(self, "profile_summary"):
+            self.profile_summary.delete("1.0", "end")
+            self.profile_summary.insert("1.0", profile.get("summary", ""))
+        for tab in getattr(self, "record_tabs", {}).values():
+            tab.refresh()
         self.refresh_dashboard()
+        self.refresh_profile_selector()
+        self._on_tab_changed()
+
+    def manage_profiles(self):
+        win = tk.Toplevel(self)
+        win.title("Manage Profiles")
+        win.transient(self)
+        win.grab_set()
+        win.geometry("560x360")
+        frame = ttk.Frame(win, padding=12)
+        frame.pack(fill="both", expand=True)
+        tree = ttk.Treeview(frame, columns=("name", "full_name"), show="headings", selectmode="browse")
+        tree.heading("name", text="Profile Name")
+        tree.heading("full_name", text="Full Name")
+        tree.column("name", width=200)
+        tree.column("full_name", width=280)
+        tree.pack(fill="both", expand=True)
+        def refresh():
+            tree.delete(*tree.get_children())
+            for p in self.db.list_profiles():
+                tree.insert("", "end", iid=str(p["id"]), values=(p["profile_name"], p["full_name"]))
+        def selected():
+            sel = tree.selection()
+            return int(sel[0]) if sel else None
+        def add():
+            dlg = ProfileNameDialog(win, "Add Profile")
+            win.wait_window(dlg)
+            if dlg.result:
+                pid = self.db.create_profile(dlg.result)
+                self.db.set_current_profile(pid)
+                refresh(); self.reload_current_profile()
+        def rename():
+            pid = selected()
+            if not pid:
+                messagebox.showinfo("Select Profile", "Select a profile to rename.", parent=win); return
+            current = next(p for p in self.db.list_profiles() if p["id"] == pid)
+            dlg = ProfileNameDialog(win, "Rename Profile", current["profile_name"])
+            win.wait_window(dlg)
+            if dlg.result:
+                self.db.rename_profile(pid, dlg.result); refresh(); self.refresh_profile_selector()
+        def activate():
+            pid = selected()
+            if pid:
+                self.db.set_current_profile(pid); self.reload_current_profile(); win.destroy()
+        def delete():
+            pid = selected()
+            if not pid:
+                messagebox.showinfo("Select Profile", "Select a profile to delete.", parent=win); return
+            current = next(p for p in self.db.list_profiles() if p["id"] == pid)
+            prompt = f"Permanently delete profile '{current['profile_name']}' and every record linked to it?\n\nThis cannot be undone."
+            if not messagebox.askyesno("Delete Profile", prompt, parent=win):
+                return
+            try:
+                self.db.delete_profile(pid); refresh(); self.reload_current_profile()
+            except ValueError as exc:
+                messagebox.showerror("Delete Profile", str(exc), parent=win)
+        buttons = ttk.Frame(frame)
+        buttons.pack(fill="x", pady=(10,0))
+        ttk.Button(buttons, text="Add", command=add).pack(side="left", padx=3)
+        ttk.Button(buttons, text="Rename", command=rename).pack(side="left", padx=3)
+        ttk.Button(buttons, text="Set Active", command=activate).pack(side="left", padx=3)
+        ttk.Button(buttons, text="Delete", command=delete).pack(side="left", padx=3)
+        ttk.Button(buttons, text="Close", command=win.destroy).pack(side="right", padx=3)
+        tree.bind("<Double-1>", lambda e: activate())
+        refresh()
+
+    def new_blank_profile(self):
+        dialog = ProfileNameDialog(self, "New Blank Profile", "New Examiner")
+        self.wait_window(dialog)
+        if not dialog.result: return
+        pid = self.db.create_blank_profile(dialog.result)
+        self.db.set_current_profile(pid)
+        self.reload_current_profile()
+        self.set_status(f"Created blank profile: {dialog.result}")
 
     def load_sample_data(self):
-        profile = self.db.get_profile()
-        if not messagebox.askyesno("Load Sample Data", "Replace this profile's current records with fictitious demonstration data?"):
+        name = self.db.get_profile().get("profile_name") or "current profile"
+        if not messagebox.askyesno("Load Sample Data", f"Replace all records in '{name}' with fictitious demonstration data?"):
             return
-        load_sample_profile(self.db, profile["id"])
-        self.refresh_profiles()
-        self.set_status("Sample data loaded")
+        load_sample_profile(self.db, clear=True)
+        self.reload_current_profile()
+        self.set_status("Fictitious sample data loaded")
 
-    def export_current_profile(self):
+    def export_profile_file(self):
         profile = self.db.get_profile()
-        safe_name = (profile.get("profile_name") or "profile").replace(" ", "_")
-        out = filedialog.asksaveasfilename(title="Export Profile", defaultextension=".json", initialfile=f"{safe_name}_portfolio.json", filetypes=[("Profile Package", "*.json"), ("All Files", "*.*")])
-        if not out:
-            return
-        export_profile(self.db, profile["id"], Path(out))
-        self.set_status(f"Profile exported: {out}")
+        default = (profile.get("profile_name") or "profile").replace(" ", "_") + ".fcvprofile.json"
+        out = filedialog.asksaveasfilename(title="Export Profile", defaultextension=".json", initialdir=str(portable_data_dir()), initialfile=default, filetypes=[("Forensic CV Profile", "*.json")])
+        if out:
+            export_profile(self.db, out)
+            self.set_status(f"Profile exported: {out}")
 
-    def import_profile_package(self):
-        src = filedialog.askopenfilename(title="Import Profile", filetypes=[("Profile Package", "*.json"), ("All Files", "*.*")])
-        if not src:
-            return
+    def import_profile_file(self):
+        src = filedialog.askopenfilename(title="Import Profile", filetypes=[("Forensic CV Profile", "*.json"), ("JSON", "*.json")])
+        if not src: return
         try:
-            pid = import_profile(self.db, Path(src))
+            pid = import_profile(self.db, src)
             self.db.set_current_profile(pid)
-            self.refresh_profiles()
+            self.reload_current_profile()
             self.set_status(f"Profile imported: {src}")
         except Exception as exc:
             messagebox.showerror("Import Error", str(exc))
 
-    def refresh_all_tabs(self):
-        for tab in self.record_tabs.values():
-            tab.db = self.db
-            tab.refresh()
-        self.load_profile_form()
-        self.refresh_dashboard()
-
-    def load_profile_form(self):
-        if not hasattr(self, "profile_vars"):
+    def auto_check_for_updates(self):
+        if not GITHUB_REPOSITORY or GITHUB_REPOSITORY == "OWNER/REPOSITORY":
             return
-        p = self.db.get_profile()
-        for key, var in self.profile_vars.items():
-            var.set(p.get(key, "") or "")
-        self.profile_summary.delete("1.0", "end")
-        self.profile_summary.insert("1.0", p.get("summary", "") or "")
+        try:
+            result = check_github_release(GITHUB_REPOSITORY, APP_VERSION, timeout=4)
+            if result.update_available and messagebox.askyesno("Update Available", f"Version {result.latest_version} is available. Open the release page?"):
+                webbrowser.open(result.release_url)
+        except Exception:
+            # Startup checks are intentionally quiet when offline.
+            pass
+
+    def check_for_updates(self):
+        self.set_status("Checking for updates...")
+        self.update_idletasks()
+        try:
+            result = check_github_release(GITHUB_REPOSITORY, APP_VERSION)
+            if result.update_available:
+                if messagebox.askyesno("Update Available", f"Version {result.latest_version} is available. Open the release page?"):
+                    webbrowser.open(result.release_url)
+            else:
+                message = result.message or f"You are using the current version ({APP_VERSION})."
+                messagebox.showinfo("Update Check", message)
+        except Exception as exc:
+            messagebox.showinfo("Update Check", str(exc))
+        self.set_status("Ready")
+
+    def clear_profile_data(self):
+        profile = self.db.get_profile()
+        name = profile.get("profile_name") or profile.get("full_name") or "current profile"
+        prompt = f"Delete ALL employment, education, training, certification, testimony, teaching, organization, skill, and achievement records for '{name}'?\n\nThe profile itself will remain. This cannot be undone."
+        if messagebox.askyesno("Clear Profile Data", prompt, parent=self):
+            self.db.clear_current_profile_data()
+            self.reload_current_profile()
+            self.set_status(f"All records cleared for {name}")
 
     def _dashboard_tab(self):
         tab = ttk.Frame(self.notebook)
         self.notebook.add(tab, text="Dashboard")
-        outer = ttk.Frame(tab, padding=16)
-        outer.pack(fill="both", expand=True)
-        ttk.Label(outer, text="Professional Portfolio Dashboard", style="Title.TLabel").pack(anchor="w", pady=(0, 12))
-        stats = ttk.Frame(outer)
-        stats.pack(fill="x")
-        self.dashboard_stats = {}
-        labels = [("Training Hours", "training_hours"), ("Training Records", "training"), ("Certifications", "certifications"), ("Testimony", "testimony"), ("Employment", "employment"), ("Education", "education")]
-        for i, (label, key) in enumerate(labels):
-            box = ttk.LabelFrame(stats, text=label, padding=12)
-            box.grid(row=0, column=i, padx=4, sticky="nsew")
-            stats.columnconfigure(i, weight=1)
-            var = tk.StringVar(value="0")
-            ttk.Label(box, textvariable=var, style="Stat.TLabel").pack()
-            self.dashboard_stats[key] = var
-        lower = ttk.Frame(outer)
-        lower.pack(fill="both", expand=True, pady=(15, 0))
-        alerts = ttk.LabelFrame(lower, text="Certification Alerts", padding=10)
-        alerts.pack(side="left", fill="both", expand=True, padx=(0, 8))
-        self.alerts_list = tk.Listbox(alerts, height=15)
-        self.alerts_list.pack(fill="both", expand=True)
-        chart = ttk.LabelFrame(lower, text="Record Counts", padding=10)
-        chart.pack(side="left", fill="both", expand=True)
-        self.dashboard_chart = tk.Canvas(chart, height=290, bg="white", highlightthickness=1, highlightbackground="#cccccc")
+        ttk.Label(tab, text="Professional Qualifications Dashboard", style="Title.TLabel").pack(anchor="w", padx=20, pady=(20, 10))
+        self.metrics_frame = ttk.Frame(tab)
+        self.metrics_frame.pack(fill="x", padx=20)
+        ttk.Button(tab, text="Refresh Dashboard", command=self.refresh_dashboard).pack(anchor="w", padx=20, pady=15)
+        body = ttk.Frame(tab)
+        body.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+        body.columnconfigure(0, weight=3); body.columnconfigure(1, weight=2); body.rowconfigure(0, weight=1)
+        self.summary_text = tk.Text(body, height=18, wrap="word", state="disabled")
+        self.summary_text.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        chart_box = ttk.LabelFrame(body, text="Professional Record Counts", padding=8)
+        chart_box.grid(row=0, column=1, sticky="nsew")
+        self.dashboard_chart = tk.Canvas(chart_box, height=300, highlightthickness=0, background="white")
         self.dashboard_chart.pack(fill="both", expand=True)
-        self.dashboard_chart.bind("<Configure>", lambda e: self.draw_dashboard_chart())
         self.refresh_dashboard()
 
     def refresh_dashboard(self):
-        if not hasattr(self, "dashboard_stats"):
-            return
-        counts = {table: self.db.count(table) for table in TABLE_CONFIG}
-        hours = self.db.total_training_hours()
-        self.dashboard_stats["training_hours"].set(f"{hours:g}")
-        for key in ["training", "certifications", "testimony", "employment", "education"]:
-            self.dashboard_stats[key].set(str(counts.get(key, 0)))
-        self.alerts_list.delete(0, "end")
-        today = date.today()
-        for cert in self.db.list("certifications"):
-            exp = (cert.get("expiration_date") or "").strip()
-            if not exp or exp.lower() in {"present", "current", "ongoing", "now"}:
-                continue
+        for w in self.metrics_frame.winfo_children():
+            w.destroy()
+        total_hours = self.db.scalar("SELECT COALESCE(SUM(hours),0) FROM training") or 0
+        expert = self.db.scalar("SELECT COUNT(*) FROM testimony WHERE witness_type='Expert Witness'") or 0
+        fact = self.db.scalar("SELECT COUNT(*) FROM testimony WHERE witness_type='Fact Witness'") or 0
+        metrics = [("Training Hours", f"{total_hours:,.2f}"), ("Training Records", str(self.db.count('training'))), ("Certifications", str(self.db.count('certifications'))), ("Expert Testimony", str(expert)), ("Fact Testimony", str(fact))]
+        for i, (label, value) in enumerate(metrics):
+            box = ttk.LabelFrame(self.metrics_frame, text=label, padding=12)
+            box.grid(row=0, column=i, padx=5, sticky="nsew")
+            ttk.Label(box, text=value, style="Metric.TLabel").pack()
+            self.metrics_frame.columnconfigure(i, weight=1)
+        expiring = self.db.conn.execute("SELECT certification, expiration_date FROM certifications WHERE profile_id=? AND expiration_date <> '' ORDER BY expiration_date", (self.db.current_profile_id,)).fetchall()
+        alerts = []
+        for r in expiring:
+            raw = str(r["expiration_date"] or "")
             try:
-                d = datetime.strptime(exp, "%Y-%m-%d").date() if len(exp) == 10 else (datetime.strptime(exp, "%Y-%m").date() if len(exp) == 7 else None)
-            except ValueError:
-                d = None
-            if not d:
-                continue
-            days = (d - today).days
-            name = cert.get("certification") or "Certification"
-            if days < 0:
-                self.alerts_list.insert("end", f"EXPIRED: {name} ({exp})")
-            elif days <= 90:
-                self.alerts_list.insert("end", f"Expires in {days} days: {name} ({exp})")
-        if self.alerts_list.size() == 0:
-            self.alerts_list.insert("end", "No certification expirations within 90 days.")
-        self.draw_dashboard_chart()
+                normalized = normalize_date(raw, allow_present=False, year_only_ok=True)
+                parts = normalized.split("-")
+                y, m = int(parts[0]), int(parts[1]) if len(parts) > 1 else 12
+                d = int(parts[2]) if len(parts) > 2 else 28
+                days = (date(y, m, min(d, 28)) - date.today()).days
+                if days < 0: label = "EXPIRED"
+                elif days <= 90: label = f"expires in {days} days"
+                elif days <= 365: label = f"expires in {days} days"
+                else: label = "active"
+            except Exception:
+                label = "review date"
+            alerts.append(f"• {r['certification']}: {raw} — {label}")
+        text = "Certification expiration alerts\n\n" + ("\n".join(alerts) if alerts else "No expiration dates entered.")
+        text += "\n\nPortable database\n\n" + str(self.db_path)
+        text += "\n\nGenerated CV folder\n\n" + str(portable_resume_dir())
+        self.summary_text.config(state="normal")
+        self.summary_text.delete("1.0", "end")
+        self.summary_text.insert("1.0", text)
+        self.summary_text.config(state="disabled")
 
-    def draw_dashboard_chart(self):
-        if not hasattr(self, "dashboard_chart"):
-            return
-        c = self.dashboard_chart
-        c.delete("all")
-        counts = [("Training", self.db.count("training")), ("Certs", self.db.count("certifications")), ("Testimony", self.db.count("testimony")), ("Employment", self.db.count("employment")), ("Education", self.db.count("education")), ("Skills", self.db.count("skills"))]
-        c.update_idletasks()
+        counts = [("Training", self.db.count("training")), ("Certs", self.db.count("certifications")), ("Testimony", self.db.count("testimony")), ("Teaching", self.db.count("teaching")), ("Education", self.db.count("education"))]
+        self.dashboard_chart.delete("all")
+        self.dashboard_chart.update_idletasks()
         width = max(self.dashboard_chart.winfo_width(), 360); height = max(self.dashboard_chart.winfo_height(), 260)
         max_value = max([v for _, v in counts] + [1])
         left, top, bottom = 75, 20, height - 35

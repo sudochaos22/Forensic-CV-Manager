@@ -6,10 +6,8 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-import pymupdf as fitz
+import fitz  # PyMuPDF
 from PIL import Image, ImageTk
-
-from version import __version__
 
 
 def resource_path(relative: str) -> Path:
@@ -37,44 +35,24 @@ class IconStore:
 
 
 class SplashScreen(tk.Toplevel):
-    def __init__(self, parent, version: str | None = None, theme_name: str = 'light'):
+    def __init__(self, parent, version: str):
         super().__init__(parent)
-        version = version or __version__
-        dark = str(theme_name).lower() == 'dark'
-        bg = '#202225' if dark else '#f5f8fb'
-        fg = '#f2f3f5' if dark else '#495057'
-        muted = '#b5bac1' if dark else '#6c757d'
-
         self.overrideredirect(True)
-        self.configure(bg=bg)
+        self.configure(bg='#f5f8fb')
         self.attributes('-topmost', True)
         self._img = None
         img_path = resource_path('assets/splash.png')
-        if img_path.exists() and not dark:
+        if img_path.exists():
             im = Image.open(img_path).convert('RGB')
             self._img = ImageTk.PhotoImage(im, master=self)
             tk.Label(self, image=self._img, bd=0).pack()
         else:
-            tk.Label(
-                self,
-                text='Forensic CV Manager',
-                font=('Segoe UI', 24, 'bold'),
-                bg=bg,
-                fg='#8ab4f8' if dark else '#1f4e79',
-            ).pack(padx=90, pady=(70, 20))
-            tk.Label(
-                self,
-                text='Professional Portfolio Management',
-                font=('Segoe UI', 11),
-                bg=bg,
-                fg=fg,
-            ).pack(pady=(0, 25))
-
+            tk.Label(self, text='Forensic CV Manager', font=('Segoe UI', 24, 'bold'), bg='#f5f8fb').pack(padx=90, pady=(70,20))
         self.status_var = tk.StringVar(value='Starting application…')
-        tk.Label(self, textvariable=self.status_var, bg=bg, fg=fg, font=('Segoe UI', 10)).pack(fill='x', padx=18, pady=(0, 8))
+        tk.Label(self, textvariable=self.status_var, bg='#f5f8fb', fg='#495057', font=('Segoe UI', 10)).pack(fill='x', padx=18, pady=(0, 8))
         self.progress = ttk.Progressbar(self, mode='determinate', maximum=100, value=8)
         self.progress.pack(fill='x', padx=18, pady=(0, 12))
-        self.version_label = tk.Label(self, text=f'Version {version}', bg=bg, fg=muted, font=('Segoe UI', 9))
+        self.version_label = tk.Label(self, text=f'Version {version}', bg='#f5f8fb', fg='#6c757d', font=('Segoe UI', 9))
         self.version_label.pack(anchor='e', padx=18, pady=(0, 10))
         self.update_idletasks()
         w, h = self.winfo_reqwidth(), self.winfo_reqheight()
@@ -85,12 +63,6 @@ class SplashScreen(tk.Toplevel):
         self.status_var.set(text)
         self.progress['value'] = value
         self.update_idletasks()
-
-    def set_status(self, text: str, value: int):
-        self.step(text, value)
-
-    def close(self):
-        self.destroy()
 
 
 class PdfPreviewWindow(tk.Toplevel):
@@ -108,9 +80,9 @@ class PdfPreviewWindow(tk.Toplevel):
         self.zoom = 1.15
         self._photo = None
 
-        toolbar = ttk.Frame(self, padding=(10, 8))
+        toolbar = ttk.Frame(self, padding=(10,8))
         toolbar.pack(fill='x')
-        ttk.Button(toolbar, text='◀ Previous', command=self.prev_page).pack(side='left', padx=(0, 4))
+        ttk.Button(toolbar, text='◀ Previous', command=self.prev_page).pack(side='left', padx=(0,4))
         ttk.Button(toolbar, text='Next ▶', command=self.next_page).pack(side='left', padx=4)
         self.page_var = tk.StringVar()
         ttk.Label(toolbar, textvariable=self.page_var).pack(side='left', padx=12)
@@ -126,11 +98,10 @@ class PdfPreviewWindow(tk.Toplevel):
         v = ttk.Scrollbar(body, orient='vertical', command=self.canvas.yview)
         h = ttk.Scrollbar(body, orient='horizontal', command=self.canvas.xview)
         self.canvas.configure(yscrollcommand=v.set, xscrollcommand=h.set)
-        self.canvas.grid(row=0, column=0, sticky='nsew')
-        v.grid(row=0, column=1, sticky='ns')
-        h.grid(row=1, column=0, sticky='ew')
-        body.rowconfigure(0, weight=1)
-        body.columnconfigure(0, weight=1)
+        self.canvas.grid(row=0,column=0,sticky='nsew')
+        v.grid(row=0,column=1,sticky='ns')
+        h.grid(row=1,column=0,sticky='ew')
+        body.rowconfigure(0,weight=1); body.columnconfigure(0,weight=1)
         self.canvas.bind('<Configure>', lambda e: self._render())
         self.protocol('WM_DELETE_WINDOW', self.close)
         self.after(40, self._render)
@@ -141,34 +112,27 @@ class PdfPreviewWindow(tk.Toplevel):
         page = self.doc.load_page(self.page_index)
         matrix = fitz.Matrix(self.zoom, self.zoom)
         pix = page.get_pixmap(matrix=matrix, alpha=False)
-        im = Image.frombytes('RGB', (pix.width, pix.height), pix.samples)
+        mode = 'RGB'
+        im = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
         self._photo = ImageTk.PhotoImage(im, master=self)
         self.canvas.delete('all')
-        self.canvas.create_image(18, 18, anchor='nw', image=self._photo)
-        self.canvas.configure(scrollregion=(0, 0, pix.width + 36, pix.height + 36))
-        self.page_var.set(f'Page {self.page_index + 1} of {self.doc.page_count}   •   {int(self.zoom * 100)}%')
+        self.canvas.create_image(18,18,anchor='nw',image=self._photo)
+        self.canvas.configure(scrollregion=(0,0,pix.width+36,pix.height+36))
+        self.page_var.set(f'Page {self.page_index+1} of {self.doc.page_count}   •   {int(self.zoom*100)}%')
 
     def prev_page(self):
         if self.page_index > 0:
-            self.page_index -= 1
-            self.canvas.xview_moveto(0)
-            self.canvas.yview_moveto(0)
-            self._render()
+            self.page_index -= 1; self.canvas.xview_moveto(0); self.canvas.yview_moveto(0); self._render()
 
     def next_page(self):
         if self.page_index + 1 < self.doc.page_count:
-            self.page_index += 1
-            self.canvas.xview_moveto(0)
-            self.canvas.yview_moveto(0)
-            self._render()
+            self.page_index += 1; self.canvas.xview_moveto(0); self.canvas.yview_moveto(0); self._render()
 
     def zoom_in(self):
-        self.zoom = min(3.0, self.zoom + .15)
-        self._render()
+        self.zoom = min(3.0, self.zoom + .15); self._render()
 
     def zoom_out(self):
-        self.zoom = max(.45, self.zoom - .15)
-        self._render()
+        self.zoom = max(.45, self.zoom - .15); self._render()
 
     def fit_width(self):
         page = self.doc.load_page(self.page_index)
@@ -178,12 +142,9 @@ class PdfPreviewWindow(tk.Toplevel):
 
     def save_pdf(self):
         target = filedialog.asksaveasfilename(
-            parent=self,
-            title='Save PDF',
-            defaultextension='.pdf',
-            initialdir=str(self.default_save_path.parent),
-            initialfile=self.default_save_path.name,
-            filetypes=[('PDF Document', '*.pdf')],
+            parent=self, title='Save PDF', defaultextension='.pdf',
+            initialdir=str(self.default_save_path.parent), initialfile=self.default_save_path.name,
+            filetypes=[('PDF Document','*.pdf')]
         )
         if not target:
             return
@@ -196,10 +157,8 @@ class PdfPreviewWindow(tk.Toplevel):
             messagebox.showerror('Save PDF', str(exc), parent=self)
 
     def close(self):
-        try:
-            self.doc.close()
-        except Exception:
-            pass
+        try: self.doc.close()
+        except Exception: pass
         try:
             shutil.rmtree(self.pdf_path.parent, ignore_errors=True)
         except Exception:

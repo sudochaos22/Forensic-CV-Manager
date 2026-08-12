@@ -58,6 +58,9 @@ def check_github_release(repository: str, current_version: str, timeout: int = 8
         payload = _request_json(releases_url, timeout)
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
+            # GitHub returns 404 both when a repository is unavailable and when a
+            # valid repository has no published Releases. Check the repository itself
+            # so the user receives a useful explanation instead of a raw HTTP error.
             try:
                 repo_payload = _request_json(f"https://api.github.com/repos/{repository}", timeout)
             except urllib.error.HTTPError as repo_exc:

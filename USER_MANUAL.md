@@ -28,6 +28,8 @@ Open **Generate CV**, select the desired sections, then choose Word, PDF, or bot
 
 Keep the executable and its `data`, `Resume`, and `Backups` folders together. Use **File > Backup Database** regularly and store a separate copy in an approved secure location.
 
+
+
 ## Appearance
 
 Use **Tools > Appearance > Light Mode** or **Dark Mode**. The choice is stored in the portable `data` folder and restored on the next launch. Light mode intentionally retains the v2.2.0 Windows-style interface.
@@ -35,6 +37,7 @@ Use **Tools > Appearance > Light Mode** or **Dark Mode**. The choice is stored i
 ## PDF Preview
 
 On **Generate CV**, select **Preview & Save PDF**. A temporary native PDF opens in the integrated viewer. Use Previous/Next, Zoom, or Fit Width to review it. Select **Save PDF** to write the approved copy to the portable `Resume` folder or another chosen location. Closing the preview without saving does not create a resume file.
+
 
 ## Sorting Records
 

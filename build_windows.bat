@@ -22,27 +22,19 @@ python -m pip install -r requirements.txt pyinstaller
 if errorlevel 1 goto :build_failed
 
 
-echo [2/9] Generating version metadata...
+echo [2/7] Generating version metadata...
 python build_metadata.py
 if errorlevel 1 goto :build_failed
 
-echo [3/9] Preparing branding assets...
-python prepare_branding_assets.py
-if errorlevel 1 goto :build_failed
-
-echo [4/9] Creating sanitized release template...
+echo [3/7] Creating sanitized release template...
 python create_release_template.py
 if errorlevel 1 goto :build_failed
 
-echo [5/9] Generating sample CV outputs...
-python generate_sample_outputs.py
-if errorlevel 1 goto :build_failed
-
-echo [6/9] Creating Windows executable...
+echo [4/7] Creating Windows executable...
 python -m PyInstaller --noconfirm --clean --onefile --windowed --name "ForensicCVManager" --version-file "version_info.txt" --icon "assets\app.ico" --add-data "assets;assets" app.py
 if errorlevel 1 goto :build_failed
 
-echo [7/9] Preparing portable release folder...
+echo [5/7] Preparing portable release folder...
 if not exist "dist\data" mkdir "dist\data"
 if not exist "dist\Resume" mkdir "dist\Resume"
 if not exist "dist\Backups" mkdir "dist\Backups"
@@ -54,7 +46,7 @@ copy /Y "USER_MANUAL.md" "dist\USER_MANUAL.txt" >nul
 copy /Y "LICENSE.txt" "dist\LICENSE.txt" >nul
 
 rem Optional Authenticode signing. Set SIGN_PFX and SIGN_PASSWORD before building.
-echo [8/9] Checking code-signing configuration...
+echo [6/7] Checking code-signing configuration...
 if defined SIGN_PFX (
     where signtool >nul 2>nul
     if errorlevel 1 (
@@ -68,7 +60,7 @@ if defined SIGN_PFX (
     echo No signing certificate configured. The executable will show Unknown Publisher.
 )
 
-echo [9/9] Build complete.
+echo [7/7] Build complete.
 echo Portable folder: "%~dp0dist"
 echo.
 echo Copy the entire dist folder to the flash drive.

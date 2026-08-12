@@ -19,6 +19,7 @@ DARK = RGBColor(45, 45, 45)
 
 
 def add_complete_text(doc: Document, text: Any, *, bullet: bool = False) -> None:
+    """Write all stored characters, preserving user-entered line breaks."""
     value = full_text(text)
     lines = value.splitlines() or [value]
     for line in lines:

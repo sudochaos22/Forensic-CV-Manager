@@ -1,104 +1,63 @@
 # Changelog
 
-All notable changes to Forensic CV Manager are documented here. The project follows [Semantic Versioning](https://semver.org/).
+## 2.4.0
 
-> Historical note: versions through 2.4.0 were developed before this GitHub release history was backfilled. The release PRs were reconstructed afterward from preserved release packages and the development record. They intentionally document the progression without pretending the PR creation dates were the original release dates.
+- Added click-to-sort column headers to record tabs.
+- Clicking the same heading toggles ascending and descending order.
+- Date and year columns sort chronologically.
+- Training hours sort numerically and Core Training sorts as Yes/No.
+- Text columns use case-insensitive natural ordering.
+- Blank values remain at the bottom of sorted results.
+- Sorting is a display-only feature and does not change stored data or CV report ordering.
 
-## [2.4.1]
-### Fixed
-- Restored compatibility between `app.py` and the splash-screen API after the 2.4.0 source synchronization.
-- Added support for the `theme_name`, `set_status()`, and `close()` calls used by the current application startup sequence.
-- Replaced the deprecated `fitz` import with `pymupdf` while preserving the existing PDF preview implementation.
+## 2.3.4
+- Status bar now updates to reflect the currently selected tab instead of retaining the last refreshed record category.
+- Removed the PDF style selector; all native PDF reports now use the Professional style.
+- Removed the outdated date-format guidance message from the Generate CV screen.
+- Updated built-in help and documentation to match the simplified PDF workflow.
 
-## [2.4.0]
-### Added
-- Click-to-sort column headers on record tabs with ascending/descending toggling.
-- Type-aware date/year, numeric, Yes/No, and natural-text sorting; blanks remain at the bottom.
-### Notes
-- UI sorting does not change SQLite data or generated CV ordering.
+# Version 2.0.0
 
-## [2.3.4]
-### Fixed
-- Status bar now reflects the active tab and relevant record count/context.
-- Removed obsolete date-format guidance.
-### Changed
-- Removed PDF style selection; all PDFs use Professional styling.
+- Replaced all release seed data with fictitious sample information.
+- Added immutable template database copied to a writable database on first launch.
+- Added blank-profile creation and sample-data loading.
+- Added profile import/export using JSON packages.
+- Added dashboard record chart and certification expiration alerts.
+- Added Word, PDF, and combined output commands.
+- Added optional automatic GitHub release checking.
+- Added Inno Setup installer project.
+- Added optional Authenticode signing step to the Windows build.
+- Retained the stable v1 interface, portable storage, flexible dates, full-text report output, multiple profiles, and chronological sorting.
 
-## [2.3.3]
-### Changed
-- Restored the 2.2.0 visual/layout baseline while retaining light/dark mode, branding, splash screen, PDF preview, and installer branding.
-- Removed ttkbootstrap and returned Light Mode to the original Windows ttk styling.
+# Version 2.1.0
 
-## [2.3.2]
-### Changed
-- Removed the grouped ribbon and restored the traditional File / Tools / Help menu bar.
+- Adopted Semantic Versioning using a single `version.py` source.
+- Added application version to the window title and About dialog.
+- Added generated Windows executable version metadata.
+- Synchronized the Inno Setup installer version from the same source.
+- Added a built-in user manual under Help.
+- Added a direct Help > How to Add Records command.
+- Documented record creation, date entry, editing, deletion, profiles, CV generation, backup, and portability.
 
-## [2.3.1]
-### Fixed
-- Fixed the ttkbootstrap startup crash caused by a `Style` naming collision.
+# Version 2.2.0
 
-## [2.3.0]
-### Added
-- Professional branding and icons.
-- Startup splash screen with version/loading status.
-- Light/dark appearance support.
-- Integrated PDF preview with page navigation and zoom.
-- Branded Inno Setup installer assets/workflow.
+- Added native PDF generation with ReportLab.
+- Removed the Microsoft Word and LibreOffice dependency for PDF output.
+- Added a shared renderer-neutral CV data model used by Word and PDF generation.
+- Added Professional, Court Testimony, Executive, Academic, and Law Enforcement PDF styles.
+- Added automatic PDF page numbers and generated-date footers.
+- Added clickable email and web links in PDF contact information.
+- Added PDF title, author, subject, and keyword metadata.
+- Added Professional Achievements to the selectable CV sections.
+- Retained independent editable Word output through python-docx.
 
-## [2.2.0]
-### Added
-- Native ReportLab PDF generation with no Word/LibreOffice dependency.
-- Shared CV data model for independent Word and PDF renderers.
-- Page numbers, clickable contact links, PDF metadata, and professional formatting.
+# Version 2.3.3
 
-## [2.1.0]
-### Added
-- Semantic Versioning with a single `version.py` source of truth.
-- Version synchronization across UI, executable metadata, and installer.
-- Built-in user manual and How to Add Records help.
+- Restored the v2.2.0 application layout, spacing, tabs, profile bar, and standard menu-driven visual scheme.
+- Retained persistent Light and Dark appearance modes under Tools > Appearance.
+- Retained branded application icon and splash screen with version/loading status.
+- Retained the integrated PDF preview with page navigation, zoom, fit-width, and save-after-review.
+- Retained professional Inno Setup installer branding, license, and welcome artwork.
+- Removed the ttkbootstrap dependency so Light mode uses the original v2.2.0 Windows ttk appearance.
+- Preserved all database, profile, portable-storage, Word/PDF rendering, sorting, and update-checking behavior.
 
-## [2.0.1]
-### Fixed
-- Removed internal numeric IDs from profile display names.
-- Improved duplicate-name handling and GitHub update-checker 404 guidance.
-
-## [2.0.0]
-### Added
-- Sanitized fictitious release seed/template database.
-- Blank profile and sample-data workflows.
-- Profile JSON import/export.
-- Dashboard chart and certification expiration alerts.
-- Word/PDF/combined output commands.
-- Optional GitHub update checker, Inno Setup project, and Authenticode signing support.
-
-## [1.2.2]
-### Fixed
-- Accepted common full-date, month/year, and year-only formats and normalized them for sorting.
-- Accepted Present/Current/Ongoing/Now where applicable.
-- Defaulted generated CV output to a portable `Resume` folder.
-
-## [1.2.1]
-### Fixed
-- Removed report-output truncation and preserved long/multiline text.
-- Standardized date-based report sections to newest-to-oldest ordering.
-
-## [1.2.0]
-### Added
-- Multiple profiles with isolated professional records.
-- Profile create/switch/rename/delete and clear-profile-data workflows.
-- Automatic migration of existing single-user data into the first profile.
-
-## [1.1.0]
-### Added
-- Portable flash-drive database/storage architecture.
-- Automatic migration/copy of an existing local database into portable storage.
-
-## [1.0.1]
-### Fixed
-- Corrected the Windows build script to use `python -m PyInstaller` when PyInstaller is not on PATH.
-
-## [1.0.0]
-### Added
-- Initial stable Forensic CV Manager desktop application.
-- SQLite-backed tracking for professional CV records.
-- GUI record management and on-demand CV generation.

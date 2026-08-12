@@ -1,4 +1,4 @@
-# Forensic CV Manager 2.4.0
+# Forensic CV Manager 2.3.3
 
 Forensic CV Manager is a portable SQLite-backed desktop application for tracking professional qualifications and generating court-ready curricula vitae.
 
@@ -34,7 +34,6 @@ On first launch, `data/template.sqlite3` is copied to `data/forensic_cv.sqlite3`
 - Optional GitHub release update checker
 - Portable ZIP build and optional Inno Setup installer
 - Optional Authenticode signing hook
-- Click-to-sort record columns with type-aware date, numeric, Yes/No, and natural-text ordering
 
 ## Run from Python
 
@@ -75,10 +74,10 @@ Without a trusted certificate, Windows may display **Unknown Publisher**. The bu
 
 ## Update checker
 
-`app_config.py` is configured for:
+Edit `app_config.py` before publishing:
 
 ```python
-GITHUB_REPOSITORY = "JSPadilla/Forensic-CV-Manager"
+GITHUB_REPOSITORY = "owner/repository"
 ```
 
 The checker reads the latest public GitHub release and compares its tag with `APP_VERSION`. It does not download or install updates automatically.
@@ -101,6 +100,7 @@ data\forensic_cv.sqlite3
 
 Back up that file regularly to a location separate from the flash drive.
 
+
 ## Version management
 
 The release version is defined once in `version.py` using Semantic Versioning (`MAJOR.MINOR.PATCH`). The build scripts generate Windows executable metadata and Inno Setup version information from that value.
@@ -109,6 +109,7 @@ The release version is defined once in `version.py` using Semantic Versioning (`
 
 Open **Help > User Manual** for instructions covering profiles, adding records, flexible dates, editing, deletion, CV generation, backups, and portable use. **Help > How to Add Records** opens directly to the record-entry instructions.
 
-## Sorting records
+
+## Sorting Records
 
 Record lists can be sorted by clicking a column heading. Click once for ascending order and click the same heading again for descending order. The active heading displays an arrow showing the current direction. Dates are sorted chronologically, hours numerically, and text alphabetically using natural ordering. Sorting changes only the on-screen list; it does not alter the database or the chronological ordering used by generated CV reports.
