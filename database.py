@@ -52,7 +52,6 @@ class Database:
         return [r[1] for r in self.conn.execute(f"PRAGMA table_info({table})")]
 
     def _migrate_schema(self) -> None:
-        # Preserve the original single-user profile and records during migration.
         legacy_profile = None
         if self._table_exists("profile"):
             row = self.conn.execute("SELECT * FROM profile LIMIT 1").fetchone()
@@ -91,7 +90,6 @@ class Database:
                 self.conn.execute(f"UPDATE {table} SET profile_id=? WHERE profile_id IS NULL", (default_id,))
             self.conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_profile ON {table}(profile_id)")
 
-        # Ensure old records and any externally imported records have an owner.
         for table in DATA_TABLES:
             self.conn.execute(f"UPDATE {table} SET profile_id=? WHERE profile_id IS NULL", (default_id,))
         self.conn.commit()
@@ -106,6 +104,17 @@ class Database:
 
     def close(self) -> None:
         self.conn.close()
+
+    def get_setting(self, key: str, default: str = "") -> str:
+        row = self.conn.execute("SELECT value FROM app_settings WHERE key=?", (key,)).fetchone()
+        return str(row[0]) if row else default
+
+    def set_setting(self, key: str, value: str) -> None:
+        self.conn.execute("INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)", (key, str(value)))
+        self.conn.commit()
+
+    def create_blank_profile(self, profile_name: str = "New Profile") -> int:
+        return self.create_profile(profile_name, "")
 
     def list_profiles(self) -> list[dict[str, Any]]:
         return [dict(r) for r in self.conn.execute("SELECT * FROM profiles ORDER BY profile_name COLLATE NOCASE")]
@@ -146,7 +155,6 @@ class Database:
     def save_profile(self, data: dict[str, Any]) -> None:
         values = [data.get(f, "") for f in PROFILE_FIELDS] + [self.current_profile_id]
         self.conn.execute(f"UPDATE profiles SET {', '.join(f'{f}=?' for f in PROFILE_FIELDS)} WHERE id=?", values)
-        # Keep the selector label useful when no explicit profile name was entered.
         current = self.get_profile()
         if current.get("profile_name") in ("Default Profile", "") and (data.get("preferred_name") or data.get("full_name")):
             self.conn.execute("UPDATE profiles SET profile_name=? WHERE id=?", (data.get("preferred_name") or data.get("full_name"), self.current_profile_id))
@@ -190,7 +198,6 @@ class Database:
         return int(self.conn.execute(f"SELECT COUNT(*) FROM {table} WHERE profile_id=?", (self.current_profile_id,)).fetchone()[0])
 
     def scalar(self, query: str, params: Iterable[Any] = ()) -> Any:
-        # Existing dashboard queries are automatically scoped to the active profile.
         lowered = query.lower()
         for table in DATA_TABLES:
             marker = f" from {table}"
