@@ -10,13 +10,9 @@ On first launch, `data/template.sqlite3` is copied to `data/forensic_cv.sqlite3`
 
 ## Features
 
-- Semantic Versioning with one centralized version source
 - Built-in user manual under Help
 - Persistent light and dark appearance modes while retaining the v2.2.0 base layout
-- Branded application icon and startup splash screen with version/loading status
 - Integrated PDF preview with page navigation, zoom, fit-width, and save-after-review
-- Branded optional Inno Setup installer artwork and license screen
-- Restored v2.2.0-style Tkinter layout and visual scheme
 - Portable SQLite database beside the executable
 - Multiple independent examiner profiles
 - Create, edit, and delete individual records
@@ -29,7 +25,6 @@ On first launch, `data/template.sqlite3` is copied to `data/forensic_cv.sqlite3`
 - Native PDF generation through ReportLab with no Office dependency
 - Consistent Professional-style native PDF output
 - PDF page numbers, clickable links, and document metadata
-- Shared renderer-neutral CV data model for consistent Word and PDF content
 - Portable `Resume`, `data`, and `Backups` folders
 - Optional GitHub release update checker
 - Portable ZIP build and optional Inno Setup installer
