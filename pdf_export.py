@@ -187,6 +187,86 @@ def generate_pdf(db: Database, output_path: str | Path, options: dict[str, Any] 
                     for x in subset
                 ], styles))
 
+    stats = sections.get("casework_summary", {})
+
+    if stats and stats.get("examinations", 0):
+        _section(
+            story,
+            "Digital Forensic Case Work",
+            styles,
+            theme
+        )
+
+        summary_lines = [
+            f"Unique cases documented: {stats.get('unique_cases', 0):,}",
+            f"Forensic examinations performed: {stats.get('examinations', 0):,}",
+            f"Total documented examination hours: {stats.get('total_hours', 0):,.1f}",
+            f"Reports written: {stats.get('reports_written', 0):,}",
+            f"Examinations involving testimony: {stats.get('testified', 0):,}",
+        ]
+
+        story.append(_bullets(summary_lines, styles))
+
+        device_types = stats.get("device_types", {})
+
+        if device_types:
+            story.append(
+                Paragraph(
+                    "<b>Device Types</b>",
+                    styles["bold"]
+                )
+            )
+
+            story.append(
+                _bullets(
+                    [
+                        f"{name}: {count:,}"
+                        for name, count in device_types.items()
+                    ],
+                    styles
+                )
+            )
+
+        case_types = stats.get("case_types", {})
+
+        if case_types:
+            story.append(
+                Paragraph(
+                    "<b>Case Types</b>",
+                    styles["bold"]
+                )
+            )
+
+            story.append(
+                _bullets(
+                    [
+                        f"{name}: {count:,}"
+                        for name, count in case_types.items()
+                    ],
+                    styles
+                )
+            )
+
+        tools = stats.get("tools", {})
+
+        if tools:
+            story.append(
+                Paragraph(
+                    "<b>Forensic Tools Utilized</b>",
+                    styles["bold"]
+                )
+            )
+
+            story.append(
+                _bullets(
+                    [
+                        f"{name}: {count:,} examination(s)"
+                        for name, count in tools.items()
+                    ],
+                    styles
+                )
+            )
+
     rows = sections.get("achievements", [])
     if rows:
         _section(story, "Professional Achievements", styles, theme)

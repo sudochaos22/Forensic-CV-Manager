@@ -6,7 +6,7 @@ from typing import Any, Iterable
 
 DATA_TABLES = [
     "employment", "education", "training", "certifications", "testimony",
-    "teaching", "organizations", "skills", "achievements",
+    "casework", "teaching", "organizations", "skills", "achievements",
 ]
 
 TABLE_FIELDS = {
@@ -15,6 +15,10 @@ TABLE_FIELDS = {
     "training": ["attended_date", "course_name", "provider", "hours", "category", "certificate_number", "expiration_date", "notes", "core_training", "sort_order"],
     "certifications": ["certification", "issuing_organization", "earned_date", "expiration_date", "credential_number", "status", "notes", "sort_order"],
     "testimony": ["testimony_date", "case_number", "court", "jurisdiction", "witness_type", "party", "subject", "outcome", "notes", "sort_order"],
+    "casework": ["examination_date", "case_number", "requesting_agency", "case_type",
+    "evidence_number", "device_type", "device_make_model", "device_size", "operating_system",
+    "acquisition_type", "tools_used", "hours", "report_written", "testified", "status", "notes",
+    "sort_order",],
     "teaching": ["organization", "role", "course_name", "start_date", "end_date", "description", "hours", "sort_order"],
     "organizations": ["organization", "role", "start_year", "end_year", "notes", "sort_order"],
     "skills": ["skill", "category", "proficiency", "notes", "sort_order"],
@@ -31,6 +35,28 @@ CREATE_DATA_TABLES = {
 "organizations": """CREATE TABLE IF NOT EXISTS organizations (id INTEGER PRIMARY KEY AUTOINCREMENT, profile_id INTEGER NOT NULL, organization TEXT NOT NULL, role TEXT, start_year TEXT, end_year TEXT, notes TEXT, sort_order INTEGER DEFAULT 0, FOREIGN KEY(profile_id) REFERENCES profiles(id) ON DELETE CASCADE)""",
 "skills": """CREATE TABLE IF NOT EXISTS skills (id INTEGER PRIMARY KEY AUTOINCREMENT, profile_id INTEGER NOT NULL, skill TEXT NOT NULL, category TEXT DEFAULT 'Tools', proficiency TEXT, notes TEXT, sort_order INTEGER DEFAULT 0, FOREIGN KEY(profile_id) REFERENCES profiles(id) ON DELETE CASCADE)""",
 "achievements": """CREATE TABLE IF NOT EXISTS achievements (id INTEGER PRIMARY KEY AUTOINCREMENT, profile_id INTEGER NOT NULL, achievement TEXT NOT NULL, achievement_date TEXT, organization TEXT, description TEXT, category TEXT DEFAULT 'Professional', sort_order INTEGER DEFAULT 0, FOREIGN KEY(profile_id) REFERENCES profiles(id) ON DELETE CASCADE)""",
+"casework": """CREATE TABLE IF NOT EXISTS casework (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NOT NULL,
+    examination_date TEXT,
+    case_number TEXT NOT NULL,
+    requesting_agency TEXT,
+    case_type TEXT,
+    evidence_number TEXT,
+    device_type TEXT,
+    device_make_model TEXT,
+    device_size TEXT,
+    operating_system TEXT,
+    acquisition_type TEXT,
+    tools_used TEXT,
+    hours REAL,
+    report_written INTEGER DEFAULT 0,
+    testified INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'Complete',
+    notes TEXT,
+    sort_order INTEGER DEFAULT 0,
+    FOREIGN KEY(profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+)""",
 }
 
 PROFILE_FIELDS = ["full_name", "preferred_name", "title", "email", "phone", "summary", "agency"]
@@ -166,7 +192,7 @@ class Database:
     def list_rows(self, table: str, order_by: str | None = None) -> list[dict[str, Any]]:
         self._validate_table(table)
         if order_by is None:
-            date_fields = {"employment":"COALESCE(end_date, 'Present') DESC, start_date DESC", "education":"graduation_date DESC", "training":"attended_date DESC", "certifications":"earned_date DESC", "testimony":"testimony_date DESC", "teaching":"start_date DESC", "organizations":"start_year DESC", "skills":"category, skill", "achievements":"achievement_date DESC"}
+            date_fields = {"employment":"COALESCE(end_date, 'Present') DESC, start_date DESC", "education":"graduation_date DESC", "training":"attended_date DESC", "certifications":"earned_date DESC", "casework":"examination_date DESC", "testimony":"testimony_date DESC", "teaching":"start_date DESC", "organizations":"start_year DESC", "skills":"category, skill", "achievements":"achievement_date DESC"}
             order_by = f"{date_fields[table]}, sort_order, id DESC"
         rows = self.conn.execute(f"SELECT * FROM {table} WHERE profile_id=? ORDER BY {order_by}", (self.current_profile_id,)).fetchall()
         return [dict(r) for r in rows]

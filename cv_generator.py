@@ -198,6 +198,70 @@ def generate_cv(db: Database, output_path: str | Path, options: dict[str, Any] |
                 for x in subset:
                     add_bullet(doc, f"SA# {x.get('case_number')}, {x.get('court')} {x.get('jurisdiction')}, {pretty_date(x.get('testimony_date'))}")
 
+    if options.get("casework_summary", True):
+        stats = sections.get("casework_summary", {})
+
+        if stats and stats.get("examinations", 0):
+            add_section_heading(doc, "Digital Forensic Case Work")
+
+            add_bullet(
+                doc,
+                f"Unique cases documented: {stats.get('unique_cases', 0):,}"
+            )
+
+            add_bullet(
+                doc,
+                f"Forensic examinations performed: {stats.get('examinations', 0):,}"
+            )
+
+            add_bullet(
+                doc,
+                f"Total documented examination hours: {stats.get('total_hours', 0):,.1f}"
+            )
+
+            add_bullet(
+                doc,
+                f"Reports written: {stats.get('reports_written', 0):,}"
+            )
+
+            add_bullet(
+                doc,
+                f"Examinations involving testimony: {stats.get('testified', 0):,}"
+            )
+
+            device_types = stats.get("device_types", {})
+
+            if device_types:
+                p = doc.add_paragraph()
+                r = p.add_run("Device Types")
+                r.bold = True
+
+                for name, count in device_types.items():
+                    add_bullet(doc, f"{name}: {count:,}")
+
+            case_types = stats.get("case_types", {})
+
+            if case_types:
+                p = doc.add_paragraph()
+                r = p.add_run("Case Types")
+                r.bold = True
+
+                for name, count in case_types.items():
+                    add_bullet(doc, f"{name}: {count:,}")
+
+            tools = stats.get("tools", {})
+
+            if tools:
+                p = doc.add_paragraph()
+                r = p.add_run("Forensic Tools Utilized")
+                r.bold = True
+
+                for name, count in tools.items():
+                    add_bullet(
+                        doc,
+                        f"{name}: {count:,} examination(s)"
+                    )
+
     if options.get('full_training', False):
         training_section = sections.get('full_training')
         rows = training_section.get('rows', []) if training_section else []

@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Python environments
+.venv/
+venv/
+env/
+
+# Build output
+build/
+dist/
+installer/
+*.spec
+
+# Forensic CV Manager working/private data
+data/forensic_cv.sqlite3
+Resume/
+Backups/
+upgrade_backups/
+
+# Exported profiles
+*.fcvprofile.json
+
+# Upgrade helper files
+apply_professional_upgrade.py
+apply_v25_upgrade.py
+verify_v25_upgrade.py
+README_UPGRADE.md
+README_V25_UPGRADE.md
+
+# IDE / Windows
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Secrets / signing material
+.env
+*.pfx
+*.p12
+*.pem
+*.key
+
+# Temporary / backup files
+*.log
+*.tmp
+*.bak

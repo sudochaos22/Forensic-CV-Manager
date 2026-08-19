@@ -21,9 +21,21 @@ from update_checker import check_github_release
 from app_config import APP_NAME, APP_VERSION, GITHUB_REPOSITORY
 from cv_generator import generate_cv
 from date_utils import normalize_date, date_sort_key
+import professional_tracking as professional_tracking
+import professional_v25 as professional_v25
 from ui_modern import SplashScreen, PdfPreviewWindow, make_preview_temp_path, resource_path
 
-DATE_FIELDS = {"start_date", "end_date", "graduation_date", "attended_date", "expiration_date", "earned_date", "testimony_date", "achievement_date"}
+DATE_FIELDS = {
+    "start_date",
+    "end_date",
+    "graduation_date",
+    "attended_date",
+    "expiration_date",
+    "earned_date",
+    "testimony_date",
+    "achievement_date",
+    "examination_date",
+}
 YEAR_FIELDS = {"start_year", "end_year"}
 
 TABLE_CONFIG = {
@@ -52,6 +64,118 @@ TABLE_CONFIG = {
         "display": ["testimony_date", "case_number", "court", "witness_type"],
         "fields": [("testimony_date", "Testimony Date", "entry"), ("case_number", "Case Number", "entry"), ("court", "Court", "entry"), ("jurisdiction", "Jurisdiction", "entry"), ("witness_type", "Witness Type", "combo", ["Fact Witness", "Expert Witness"]), ("party", "Party", "entry"), ("subject", "Subject / Discipline", "entry"), ("outcome", "Outcome", "entry"), ("notes", "Notes", "text")],
     },
+    "casework": {
+    "label": "Case Work",
+
+    "display": [
+        "examination_date",
+        "case_number",
+        "case_type",
+        "device_type",
+        "device_size",
+        "status",
+    ],
+
+    "fields": [
+        ("examination_date", "Examination Date", "entry"),
+
+        ("case_number", "Case Number", "entry"),
+
+        ("requesting_agency", "Requesting Agency", "entry"),
+
+        (
+            "case_type",
+            "Case Type",
+            "combo",
+            [
+                "",
+                "Cybercrime",
+                "Child Exploitation / ICAC",
+                "Homicide",
+                "Fraud",
+                "Narcotics",
+                "Internal / Administrative",
+                "Other",
+            ],
+        ),
+
+        ("evidence_number", "Evidence / Item Number", "entry"),
+
+        (
+            "device_type",
+            "Device Type",
+            "combo",
+            [
+                "",
+                "Laptop",
+                "Desktop",
+                "Mobile Phone",
+                "Tablet",
+                "External HDD / SSD",
+                "USB Flash Drive",
+                "Memory Card",
+                "Cloud Account",
+                "Server",
+                "Network Capture",
+                "Memory / RAM",
+                "Other",
+            ],
+        ),
+
+        ("device_make_model", "Device Make / Model", "entry"),
+
+        ("device_size", "Device / Storage Size", "entry"),
+
+        ("operating_system", "Operating System", "entry"),
+
+        (
+            "acquisition_type",
+            "Acquisition Type",
+            "combo",
+            [
+                "",
+                "Physical",
+                "Full File System",
+                "File System",
+                "Advanced Logical",
+                "Logical",
+                "Dead-box",
+                "Live",
+                "Triage",
+                "Cloud / API",
+                "Network Capture",
+                "Memory Acquisition",
+                "Other",
+            ],
+        ),
+
+        (
+            "tools_used",
+            "Tools Used (semicolon separated)",
+            "entry",
+        ),
+
+        ("hours", "Examination Hours", "entry"),
+
+        ("report_written", "Report Written", "check"),
+
+        ("testified", "Testified", "check"),
+
+        (
+            "status",
+            "Status",
+            "combo",
+            [
+                "Complete",
+                "Ongoing",
+                "Pending",
+                "Archived",
+            ],
+        ),
+
+        ("notes", "Notes / Work Performed", "text"),
+    ],
+},
     "teaching": {
         "label": "Teaching",
         "display": ["organization", "role", "course_name", "start_date", "end_date"],
@@ -74,6 +198,10 @@ TABLE_CONFIG = {
     },
 }
 
+
+# Professional tracking extension bootstrap
+professional_tracking.install_database_extensions()
+professional_tracking.extend_table_config(TABLE_CONFIG, DATE_FIELDS, YEAR_FIELDS)
 
 def application_dir() -> Path:
     """Return the folder containing the executable or source files."""
@@ -221,7 +349,7 @@ class RecordDialog(tk.Toplevel):
         ttk.Button(buttons, text="Cancel", command=self.destroy).pack(side="right", padx=4)
         ttk.Button(buttons, text="Save", command=self.save).pack(side="right", padx=4)
         self.bind("<Escape>", lambda e: self.destroy())
-        self.geometry("760x620")
+        self.geometry("820x720" if table == "casework" else "760x620")
 
     def save(self):
         result = {}
@@ -455,10 +583,167 @@ class App(tk.Tk):
         self._dashboard_tab()
         self._profile_tab()
         self.record_tabs = {}
-        for table in TABLE_CONFIG:
-            tab = RecordsTab(self.notebook, self.db, table, self.set_status)
-            self.record_tabs[table] = tab
-            self.notebook.add(tab, text=TABLE_CONFIG[table]["label"])
+        self.category_notebooks = {}
+
+        TAB_GROUPS = {
+            "Career": [
+                "employment",
+                "education",
+                "organizations",
+                "skills",
+                "achievements",
+            ],
+
+            "Forensics": [
+                "casework",
+                "forensic_reports",
+                "peer_reviews",
+                "tool_experience",
+                "case_index",
+                "tool_library",
+            ],
+
+            "Court & Certs": [
+                "testimony",
+                "court_qualifications",
+                "certifications",
+            ],
+
+            "Development": [
+                "training",
+                "teaching",
+                "presentations",
+                "publications",
+            ],
+
+            "QA & Leadership": [
+                "validations",
+                "procedures",
+                "mentoring",
+                "projects",
+                "professional_evidence",
+            ],
+        }
+
+        used_tables = set()
+
+        for group_name, tables in TAB_GROUPS.items():
+
+            # Only include tables that actually exist
+            valid_tables = [
+                table
+                for table in tables
+                if table in TABLE_CONFIG
+            ]
+
+            if not valid_tables:
+                continue
+
+            # Create the main category tab
+            group_frame = ttk.Frame(self.notebook)
+
+            self.notebook.add(
+                group_frame,
+                text=group_name
+            )
+
+            # Create a second row of tabs inside the category
+            inner_notebook = ttk.Notebook(group_frame)
+
+            inner_notebook.pack(
+                fill="both",
+                expand=True,
+                padx=5,
+                pady=5
+            )
+
+            self.category_notebooks[group_name] = inner_notebook
+
+            for table in valid_tables:
+
+                tab = RecordsTab(
+                    inner_notebook,
+                    self.db,
+                    table,
+                    self.set_status
+                )
+
+                self.record_tabs[table] = tab
+
+                inner_notebook.add(
+                    tab,
+                    text=TABLE_CONFIG[table]["label"]
+                )
+
+                used_tables.add(table)
+
+            # Refresh records when changing the inner tabs
+            def on_inner_tab_changed(
+                event,
+                notebook=inner_notebook
+            ):
+                try:
+                    selected = notebook.select()
+
+                    if not selected:
+                        return
+
+                    widget = notebook.nametowidget(selected)
+
+                    if hasattr(widget, "refresh"):
+                        widget.refresh()
+
+                except tk.TclError:
+                    pass
+
+            inner_notebook.bind(
+                "<<NotebookTabChanged>>",
+                on_inner_tab_changed
+            )
+
+        # Safety net:
+        # Any future table that isn't assigned above
+        # will automatically appear under "Other".
+        remaining_tables = [
+            table
+            for table in TABLE_CONFIG
+            if table not in used_tables
+        ]
+
+        if remaining_tables:
+
+            other_frame = ttk.Frame(self.notebook)
+
+            self.notebook.add(
+                other_frame,
+                text="Other"
+            )
+
+            other_notebook = ttk.Notebook(other_frame)
+
+            other_notebook.pack(
+                fill="both",
+                expand=True,
+                padx=5,
+                pady=5
+            )
+
+            for table in remaining_tables:
+
+                tab = RecordsTab(
+                    other_notebook,
+                    self.db,
+                    table,
+                    self.set_status
+                )
+
+                self.record_tabs[table] = tab
+
+                other_notebook.add(
+                    tab,
+                    text=TABLE_CONFIG[table]["label"]
+                )
+
         self._generate_tab()
         ttk.Label(self, textvariable=self.status, relief="sunken", anchor="w").pack(fill="x", side="bottom")
         self.refresh_profile_selector()
@@ -896,7 +1181,14 @@ Do not rely on a flash drive as the only copy of professional records. Maintain 
         total_hours = self.db.scalar("SELECT COALESCE(SUM(hours),0) FROM training") or 0
         expert = self.db.scalar("SELECT COUNT(*) FROM testimony WHERE witness_type='Expert Witness'") or 0
         fact = self.db.scalar("SELECT COUNT(*) FROM testimony WHERE witness_type='Fact Witness'") or 0
-        metrics = [("Training Hours", f"{total_hours:,.2f}"), ("Training Records", str(self.db.count('training'))), ("Certifications", str(self.db.count('certifications'))), ("Expert Testimony", str(expert)), ("Fact Testimony", str(fact))]
+        metrics = [
+    ("Training Hours", f"{total_hours:,.2f}"),
+    ("Training Records", str(self.db.count("training"))),
+    ("Certifications", str(self.db.count("certifications"))),
+    ("Case Examinations", str(self.db.count("casework"))),
+    ("Expert Testimony", str(expert)),
+    ("Fact Testimony", str(fact)),
+]
         for i, (label, value) in enumerate(metrics):
             box = ttk.LabelFrame(self.metrics_frame, text=label, padding=12)
             box.grid(row=0, column=i, padx=5, sticky="nsew")
@@ -927,7 +1219,14 @@ Do not rely on a flash drive as the only copy of professional records. Maintain 
         self.summary_text.insert("1.0", text)
         self.summary_text.config(state="disabled")
 
-        counts = [("Training", self.db.count("training")), ("Certs", self.db.count("certifications")), ("Testimony", self.db.count("testimony")), ("Teaching", self.db.count("teaching")), ("Education", self.db.count("education"))]
+        counts = [
+    ("Case Work", self.db.count("casework")),
+    ("Training", self.db.count("training")),
+    ("Certs", self.db.count("certifications")),
+    ("Testimony", self.db.count("testimony")),
+    ("Teaching", self.db.count("teaching")),
+    ("Education", self.db.count("education")),
+]
         self.dashboard_chart.delete("all")
         self.dashboard_chart.update_idletasks()
         width = max(self.dashboard_chart.winfo_width(), 360); height = max(self.dashboard_chart.winfo_height(), 260)
@@ -979,7 +1278,7 @@ Do not rely on a flash drive as the only copy of professional records. Maintain 
         ttk.Label(frame, text="Create CV", style="Title.TLabel").pack(anchor="w", pady=(0, 8))
         ttk.Label(frame, text="Select the sections to include. Word and PDF outputs are generated independently from the same current SQLite records.").pack(anchor="w", pady=(0, 12))
         self.cv_options = {}
-        options = [("summary", "Professional Summary", 1), ("core_training", "Core Training", 1), ("employment", "Work Experience", 1), ("teaching", "Teaching Experience", 1), ("organizations", "Professional Organizations", 1), ("certifications", "Certifications", 1), ("skills", "Skills and Tools", 1), ("education", "Education", 1), ("testimony", "Courtroom Testimony", 1), ("achievements", "Professional Achievements", 1), ("full_training", "Detailed Training Appendix", 0)]
+        options = [("summary", "Professional Summary", 1), ("core_training", "Core Training", 1), ("employment", "Work Experience", 1), ("teaching", "Teaching Experience", 1), ("organizations", "Professional Organizations", 1), ("certifications", "Certifications", 1), ("skills", "Skills and Tools", 1), ("education", "Education", 1), ("testimony", "Courtroom Testimony", 1), ("casework_summary", "Case Work Summary", 1), ("achievements", "Professional Achievements", 1), ("full_training", "Detailed Training Appendix", 0)]
         checks = ttk.LabelFrame(frame, text="CV Sections", padding=12)
         checks.pack(fill="x", pady=8)
         for i, (key, label, default) in enumerate(options):
@@ -1112,6 +1411,10 @@ Do not rely on a flash drive as the only copy of professional records. Maintain 
         self.db.close()
         self.destroy()
 
+
+# Install professional tracking UI/output overrides after App is defined.
+professional_tracking.install_app_extensions(App)
+professional_v25.install_extensions(App)
 
 if __name__ == "__main__":
     App().mainloop()

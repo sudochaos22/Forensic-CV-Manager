@@ -79,6 +79,82 @@ def build_cv_data(db: Database, options: dict[str, Any] | None = None) -> dict[s
     if options.get("achievements", True):
         sections["achievements"] = sorted_by_date(db.list_rows("achievements"), "achievement_date")
 
+    if options.get("casework_summary", True):
+        rows = db.list_rows("casework")
+
+        unique_cases = {
+            str(x.get("case_number") or "").strip()
+            for x in rows
+            if str(x.get("case_number") or "").strip()
+        }
+
+        total_hours = sum(float(x.get("hours") or 0) for x in rows)
+
+        reports_written = sum(
+            1 for x in rows if int(x.get("report_written") or 0)
+        )
+
+        testified = sum(
+            1 for x in rows if int(x.get("testified") or 0)
+        )
+
+        device_types = {}
+        case_types = {}
+        tools = {}
+
+        for x in rows:
+            # Device type breakdown
+            device = str(x.get("device_type") or "").strip()
+            if device:
+                device_types[device] = device_types.get(device, 0) + 1
+
+            # Case type breakdown
+            case_type = str(x.get("case_type") or "").strip()
+            if case_type:
+                case_types[case_type] = case_types.get(case_type, 0) + 1
+
+            # Tools are stored semicolon-separated
+            tool_text = str(x.get("tools_used") or "").strip()
+
+            if tool_text:
+                for tool in tool_text.split(";"):
+                    tool = tool.strip()
+
+                    if tool:
+                        tools[tool] = tools.get(tool, 0) + 1
+
+        sections["casework_summary"] = {
+            "unique_cases": len(unique_cases),
+            "examinations": len(rows),
+            "total_hours": total_hours,
+            "reports_written": reports_written,
+            "testified": testified,
+
+            "device_types": dict(
+                sorted(
+                    device_types.items(),
+                    key=lambda item: item[1],
+                    reverse=True
+                )
+            ),
+
+            "case_types": dict(
+                sorted(
+                    case_types.items(),
+                    key=lambda item: item[1],
+                    reverse=True
+                )
+            ),
+
+            "tools": dict(
+                sorted(
+                    tools.items(),
+                    key=lambda item: item[1],
+                    reverse=True
+                )
+            ),
+        }
+
     if options.get("full_training", False):
         rows = sorted_by_date(db.list_rows("training"), "attended_date")
         sections["full_training"] = {

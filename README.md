@@ -1,110 +1,238 @@
-# Forensic CV Manager 2.4.0
+# Forensic CV Manager Professional — v2.5 Upgrade
 
-Forensic CV Manager is a portable SQLite-backed desktop application for tracking professional qualifications and generating court-ready curricula vitae.
+This package is the next layer for the customized **Forensic-CV-Manager-2.4.0** / Professional Tracking build.
 
-## Release privacy
+It is specifically designed to preserve the Professional Tracking changes and the categorized tab layout already installed.
 
-The release template contains only fictitious demonstration data for **Alex Morgan** at the fictional **Metro Regional Public Safety Laboratory**. No developer, agency, personal email, phone number, case number, or employment history is included.
+## What v2.5 adds
 
-On first launch, `data/template.sqlite3` is copied to `data/forensic_cv.sqlite3`. The template remains unchanged and the working database stores all user edits.
+### 1. Global Search
+A **Global Search** button appears beside **Manage Profiles**.
 
-## Features
+It searches all professional record tables for the active profile and can jump directly to the selected record.
 
-- Built-in user manual under Help
-- Persistent light and dark appearance modes while retaining the v2.2.0 base layout
-- Integrated PDF preview with page navigation, zoom, fit-width, and save-after-review
-- Portable SQLite database beside the executable
-- Multiple independent examiner profiles
-- Create, edit, and delete individual records
-- Clear all records for the selected profile
-- Fictitious sample database and reusable sample-data command
-- Import/export a single profile as `.fcvprofile.json`
-- Flexible date entry with chronological report sorting
-- Dashboard metrics, record-count chart, and certification expiration alerts
-- Word CV generation
-- Native PDF generation through ReportLab with no Office dependency
-- Consistent Professional-style native PDF output
-- PDF page numbers, clickable links, and document metadata
-- Portable `Resume`, `data`, and `Backups` folders
-- Optional GitHub release update checker
-- Portable ZIP build and optional Inno Setup installer
-- Optional Authenticode signing hook
+### 2. Filters on record tabs
+Record tabs now support:
+- Normal text search
+- Table-appropriate dropdown filters
+- Year filtering when the table has a primary date
+- Clear Filters
+- `Showing X of Y records`
 
-## Run from Python
+### 3. Dashboard drill-down
+Dashboard metric cards are buttons.
+
+Examples:
+- Cases -> Case Index
+- Examinations -> Case Work
+- Reports -> Forensic Reports
+- Peer Reviews -> Peer / Technical Reviews
+- Testimony -> Courtroom Testimony
+- Training Hrs -> Training
+
+The dashboard also shows current-year activity.
+
+### 4. Annual statistics
+Current-year activity is summarized on the dashboard.
+
+Generate CV also gains an **Annual Activity Report...** button that creates both:
+- `.docx`
+- `.pdf`
+
+The annual report includes examination counts/hours, reports, reviews, testimony, training/CPE, teaching, presentations, publications, validation, SOP/policy, mentoring, projects, device types, acquisition methods, and tool usage.
+
+### 5. Tool normalization
+A new **Tool Library** stores canonical tool names and aliases.
+
+The Case Work `Tools Used` field becomes a multi-select selector.
+
+Examples:
+- `AXIOM`
+- `Magnet Axiom`
+- `Magnet AXIOM`
+
+can all normalize to:
+
+`Magnet AXIOM`
+
+Tool Library has a **Normalize Existing Case Work** command.
+
+### 6. Case-to-record relationships
+A new **Case Index** provides one case/reference record per case number.
+
+The database adds an internal `case_id` link to:
+- Case Work
+- Forensic Reports
+- Peer / Technical Reviews
+- Testimony
+- Court Qualifications
+
+Existing records are linked automatically by matching case number.
+
+Select a Case Index record and choose **View Linked Records** to see its related professional-history records.
+
+### 7. Export presets
+Generate CV gains these built-in presets:
+- Standard CV
+- Expert Witness CV
+- Voir Dire Package
+- Full Professional Record
+- Annual Review
+- Training / CPE Report
+
+You can also save/delete custom presets.
+
+Privacy fields stay off unless you explicitly enable them.
+
+### 8. Expert Qualification / Voir Dire report
+Generate CV gains **Expert Qualification Report...**
+
+It creates both Word and PDF and summarizes:
+- Cases/examinations
+- Examination hours
+- Reports
+- Peer reviews
+- Expert testimony
+- Court qualification records
+- Training
+- Certifications
+- Tool usage
+- Quality/validation experience
+
+It intentionally omits case numbers and evidence identifiers.
+
+### 9. Annual Professional Activity report
+Choose a calendar year and generate an annual activity report in Word and PDF.
+
+### 10. Certification/CPE alerts
+Dashboard alerts include:
+- Expired credentials
+- Credentials within 90 / 180 / 365 days
+- CPE/CE progress and remaining credits when those fields are populated
+
+### 11. Data validation
+The new record dialog checks:
+- Numeric fields
+- Negative numeric values
+- Date formats
+- End date before start date
+- Data-size entries such as `938 GB` or `1.5 TB`
+- Duplicate certification warnings
+- Duplicate Case Work warnings
+- Duplicate Case Index numbers
+- Duplicate Tool Library names
+
+### 12. Automatic backups
+On application startup, if a working SQLite database already exists, a daily copy is stored in:
+
+`Backups\Auto\`
+
+File format:
+
+`forensic_cv_auto_YYYY-MM-DD.sqlite3`
+
+The newest **30** automatic backups are retained.
+
+This does not replace a separate encrypted/off-device backup strategy.
+
+### 13. Schema versioning
+The database now contains:
+
+`schema_meta`
+
+with:
+
+`schema_version = 5`
+
+and:
+
+`professional_version = 2.5.0`
+
+### 14. About screen
+The About screen identifies the Professional Edition, application version, database schema, and backup policy.
+
+### 15. Changelog
+Help gains:
+
+**Professional Edition Changelog**
+
+## Install
+
+1. Close Forensic CV Manager.
+2. Extract this ZIP.
+3. Copy/run the package from your project folder, or copy these files there:
+   - `professional_v25.py`
+   - `apply_v25_upgrade.py`
+4. Open Command Prompt:
 
 ```bat
-python -m pip install -r requirements.txt
+cd /d "D:\Forensic-CV-Manager-2.5.0"
+python apply_v25_upgrade.py
+```
+
+The installer creates:
+
+`upgrade_backups\v25_YYYYMMDD_HHMMSS\`
+
+before modifying source/version files.
+
+It also preserves/copies `professional_tracking.py` if needed.
+
+## First test
+
+Run:
+
+```bat
 python app.py
 ```
 
-## Build the portable Windows release
+Before entering real data, use TEST records.
+
+Verify:
+
+1. **Global Search** button exists.
+2. Under **Forensics**, confirm:
+   - Case Work
+   - Forensic Reports
+   - Peer / Technical Reviews
+   - Tool Experience
+   - Case Index
+   - Tool Library
+3. Open Case Work:
+   - Tool selector should be multi-select.
+4. Open Case Index:
+   - Select a test case and click **View Linked Records**.
+5. Open several tabs:
+   - Test filters and year filtering.
+6. Open Generate CV:
+   - Apply **Standard CV**
+   - Apply **Voir Dire Package**
+   - Save a custom preset
+7. Create an Expert Qualification report.
+8. Create an Annual Activity report.
+9. Restart the app and confirm:
+   `Backups\Auto\forensic_cv_auto_YYYY-MM-DD.sqlite3`
+
+## Rebuild only after testing
+
+When `python app.py` is working correctly:
 
 ```bat
 build_windows.bat
 ```
 
-Copy the entire `dist` folder to the flash drive. Do not copy only the executable.
+Test:
 
-## Build an installer
+`dist\ForensicCVManager.exe`
 
-Install Inno Setup 6, run `build_windows.bat`, and then run:
+Then:
 
 ```bat
 build_installer.bat
 ```
 
-The installer is created in the `installer` folder. The portable build remains the preferred option for flash-drive use.
+## Privacy reminder
 
-## Code signing
+This application remains a portable SQLite-backed professional-history application. Do not store restricted investigative information merely because a field exists.
 
-A trusted signing certificate is not included. To sign during the build, install the Windows SDK so `signtool.exe` is available and set these environment variables before running `build_windows.bat`:
-
-```bat
-set SIGN_PFX=C:\Certificates\YourCodeSigningCertificate.pfx
-set SIGN_PASSWORD=your-password
-build_windows.bat
-```
-
-Without a trusted certificate, Windows may display **Unknown Publisher**. The build cannot legitimately remove that warning by itself.
-
-## Update checker
-
-Edit `app_config.py` before publishing:
-
-```python
-GITHUB_REPOSITORY = "owner/repository"
-```
-
-The checker reads the latest public GitHub release and compares its tag with `APP_VERSION`. It does not download or install updates automatically.
-
-## PDF generation
-
-Use **Preview & Save PDF** on the Generate CV tab to review a temporary native PDF inside the application before saving it. PDF files are generated directly with ReportLab. Microsoft Word and LibreOffice are not required. Word documents are generated independently with python-docx for users who need an editable copy. Both renderers use the same normalized CV data model.
-
-## Profile exchange
-
-Use **File > Export Current Profile** to create a JSON profile package. Use **File > Import Profile** to add it as a separate profile. Imports never overwrite an existing profile.
-
-## Backups
-
-The working database is:
-
-```text
-data\forensic_cv.sqlite3
-```
-
-Back up that file regularly to a location separate from the flash drive.
-
-
-## Version management
-
-The release version is defined once in `version.py` using Semantic Versioning (`MAJOR.MINOR.PATCH`). The build scripts generate Windows executable metadata and Inno Setup version information from that value.
-
-## User manual
-
-Open **Help > User Manual** for instructions covering profiles, adding records, flexible dates, editing, deletion, CV generation, backups, and portable use. **Help > How to Add Records** opens directly to the record-entry instructions.
-
-
-## Sorting Records
-
-Record lists can be sorted by clicking a column heading. Click once for ascending order and click the same heading again for descending order. The active heading displays an arrow showing the current direction. Dates are sorted chronologically, hours numerically, and text alphabetically using natural ordering. Sorting changes only the on-screen list; it does not alter the database or the chronological ordering used by generated CV reports.
+Keep victim/suspect names, passwords, contraband descriptions, sensitive investigative narrative, CUI/classified data, and other restricted information out of this database unless the storage environment and applicable policy specifically authorize it.
