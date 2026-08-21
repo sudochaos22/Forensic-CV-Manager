@@ -23,6 +23,7 @@ from cv_generator import generate_cv
 from date_utils import normalize_date, date_sort_key
 import professional_tracking as professional_tracking
 import professional_v25 as professional_v25
+import professional_v251 as professional_v251
 from ui_modern import SplashScreen, PdfPreviewWindow, make_preview_temp_path, resource_path
 
 DATE_FIELDS = {
@@ -1415,6 +1416,7 @@ Do not rely on a flash drive as the only copy of professional records. Maintain 
 # Install professional tracking UI/output overrides after App is defined.
 professional_tracking.install_app_extensions(App)
 professional_v25.install_extensions(App)
+professional_v251.install_app_extensions(App)
 
 if __name__ == "__main__":
     App().mainloop()

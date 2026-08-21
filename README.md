@@ -1,10 +1,56 @@
-# Forensic CV Manager Professional — v2.5 Upgrade
+# Forensic CV Manager Professional
 
-This package is the next layer for the customized **Forensic-CV-Manager-2.4.0** / Professional Tracking build.
+**Current Version: 2.5.1**
 
-It is specifically designed to preserve the Professional Tracking changes and the categorized tab layout already installed.
+Forensic CV Manager Professional is a digital-forensics-focused professional experience, casework, training, certification, expert-witness, and career tracking application.
 
-## What v2.5 adds
+This project is an expanded fork of the original Forensic CV Manager and adds professional tracking, casework statistics, reporting, dashboard metrics, tool normalization, expert-witness documentation, and other DFIR-focused features.
+
+
+## What's New in v2.5.1
+
+Version 2.5.1 expands Training and Case Work tracking and adds additional current-year forensic workload metrics.
+
+### Training Improvements
+
+- Added an editable **Provider** dropdown.
+- Added an editable **Category** dropdown.
+- Both dropdowns include common predefined values while still allowing custom text entries.
+- Default Provider and Category options can be customized in `professional_v251.py`.
+
+### Case Work Improvements
+
+Added the following fields:
+
+- **Evidence Size (GB)**
+- **Image Date**
+- **Image Time (Minutes)**
+- **Process Date**
+- **Process Time (Minutes)**
+- **Artifacts Identified**
+
+Also added:
+
+- **PST** as a Device Type option.
+
+### Dashboard Improvements
+
+Added current-year forensic workload statistics:
+
+- **Imaging Time**
+- **Processing Time**
+- **Data Analyzed**
+
+Imaging time is calculated using the **Image Date**.
+
+Processing time and Data Analyzed are calculated using the **Process Date**.
+
+Time totals are displayed automatically in days, hours, and minutes:
+
+```text
+2d 6h 31m```
+
+## Features Introduced in v2.5
 
 ### 1. Global Search
 A **Global Search** button appears beside **Manage Profiles**.
@@ -146,7 +192,7 @@ with:
 
 and:
 
-`professional_version = 2.5.0`
+`professional_version = 2.5.1`
 
 ### 14. About screen
 The About screen identifies the Professional Edition, application version, database schema, and backup policy.
@@ -230,6 +276,11 @@ Then:
 ```bat
 build_installer.bat
 ```
+
+## Documentation
+
+- [Portable Build and Update Guide](docs/README_Portable_Build_and_Update_Guide.md)
+- [Customizing Training Provider and Category Dropdowns](docs/README_Training_Dropdown_Customization.md)
 
 ## Privacy reminder
 
