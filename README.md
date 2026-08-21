@@ -47,8 +47,7 @@ Processing time and Data Analyzed are calculated using the **Process Date**.
 
 Time totals are displayed automatically in days, hours, and minutes:
 
-```text
-2d 6h 31m```
+`2d 6h 31m`
 
 ## Features Introduced in v2.5
 
